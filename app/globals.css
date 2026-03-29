@@ -1,130 +1,200 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* ═══════════════════════════════════════════════════
+   TAILWIND v4 THEME CONFIG (replaces tailwind.config.ts)
+   In v4, theme tokens live here in CSS, not in a .ts file.
+═══════════════════════════════════════════════════ */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+@theme {
+  /* Fonts */
+  --font-ui:   'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Tailwind v4 reads --font-* and --color-* automatically */
+  --font-family-sans: var(--font-ui);
+  --font-family-mono: var(--font-mono);
+
+  /* Colors — v4 uses --color-* naming convention */
+  --color-bg-void:     #080a0e;
+  --color-bg-surface:  #0d1117;
+  --color-bg-elevated: #161b22;
+  --color-bg-overlay:  #1c2128;
+  --color-bg-border:   #21262d;
+
+  --color-green-neon:  #00ff41;
+  --color-green-dim:   #00cc33;
+  --color-red-signal:  #ff3b3b;
+  --color-red-dim:     #cc2222;
+  --color-amber-warn:  #f0a500;
+  --color-blue-active: #4d9fff;
+
+  --color-text-primary:   #e6edf3;
+  --color-text-secondary: #8b949e;
+  --color-text-tertiary:  #484f58;
 }
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS (our own namespace, not Tailwind's)
+   These are separate from @theme — they are raw CSS
+   variables consumed by inline styles in components.
+═══════════════════════════════════════════════════ */
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --bg-void:        #080a0e;
+  --bg-surface:     #0d1117;
+  --bg-elevated:    #161b22;
+  --bg-border:      #21262d;
+  --bg-overlay:     #1c2128;
+
+  --accent-green:       #00ff41;
+  --accent-green-dim:   #00cc33;
+  --accent-green-glow:  rgba(0, 255, 65, 0.07);
+  --accent-green-muted: #0d2b14;
+
+  --accent-red:         #ff3b3b;
+  --accent-red-dim:     #cc2222;
+  --accent-red-glow:    rgba(255, 59, 59, 0.07);
+  --accent-red-muted:   #2b0d0d;
+
+  --accent-amber:       #f0a500;
+  --accent-amber-dim:   #cc8800;
+  --accent-amber-glow:  rgba(240, 165, 0, 0.07);
+
+  --accent-blue:        #4d9fff;
+  --accent-blue-dim:    #2b7fdd;
+  --accent-blue-glow:   rgba(77, 159, 255, 0.07);
+
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary:  #484f58;
+
+  --border-subtle:  1px solid #21262d;
+  --border-default: 1px solid #30363d;
+
+  --shadow-panel: 0 0 0 1px #21262d, 0 4px 24px rgba(0,0,0,0.6);
+  --glow-green:   0 0 12px rgba(0,255,65,0.15), 0 0 2px #00ff41;
+  --glow-red:     0 0 12px rgba(255,59,59,0.15), 0 0 2px #ff3b3b;
+
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* ═══════════════════════════════════════════════════
+   GLOBAL RESETS
+═══════════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+html {
+  color-scheme: dark;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  min-height: 100dvh;
+  background-image:
+    linear-gradient(var(--bg-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center center;
+}
+
+/* ═══════════════════════════════════════════════════
+   UTILITY CLASSES
+   Since we can't rely on Tailwind scanning for custom
+   tokens, define critical utilities explicitly here.
+═══════════════════════════════════════════════════ */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.text-price-up   { color: var(--accent-green); font-family: var(--font-mono); }
+.text-price-down { color: var(--accent-red);   font-family: var(--font-mono); }
+.text-muted      { color: var(--text-secondary); }
+.text-faint      { color: var(--text-tertiary); }
+
+::-webkit-scrollbar               { width: 4px; height: 4px; }
+::-webkit-scrollbar-track         { background: var(--bg-surface); }
+::-webkit-scrollbar-thumb         { background: var(--bg-border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover   { background: var(--text-tertiary); }
+
+::selection {
+  background-color: var(--accent-green-glow);
+  color: var(--accent-green);
+}
+
+/* ── Auction row hover ── */
+.auction-row:hover {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--bg-border) !important;
+}
+
+/* ── Detail page interactions ── */
+.breadcrumb-link:hover { color: var(--text-primary) !important; }
+
+.bid-input:focus {
+  border-color: var(--accent-green) !important;
+  box-shadow: 0 0 0 2px var(--accent-green-glow);
+}
+
+.quick-btn:hover {
+  background-color: var(--bg-overlay) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--bg-border) !important;
+}
+
+.bid-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.buy-now-btn:hover {
+  background-color: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── Live pulse animation ── */
+@keyframes livePulse {
+  0%, 100% { opacity: 1;   box-shadow: var(--glow-green); }
+  50%       { opacity: 0.4; box-shadow: none;              }
+}
+
+/* ── Skeleton shimmer ── */
+@keyframes shimmer {
+  0%   { opacity: 1;    }
+  50%  { opacity: 0.45; }
+  100% { opacity: 1;    }
+}
+
+.skeleton-shimmer {
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ── Page transition ── */
+@keyframes page-enter {
+  from {
+    opacity:   0;
+    transform: translateY(6px);
   }
-  body {
-    @apply bg-background text-foreground;
+  to {
+    opacity:   1;
+    transform: translateY(0);
   }
-  html {
-    @apply font-sans;
-  }
+}
+
+.page-transition {
+  animation: page-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
