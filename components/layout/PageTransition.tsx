@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════
 
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function PageTransition({
   children,
@@ -25,11 +26,22 @@ export default function PageTransition({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [animClass, setAnimClass] = useState('page-transition');
+
+  // Safely re-trigger the CSS animation on route change without
+  // violently unmounting the React tree (which breaks Suspense
+  // boundaries and causes glitchy flashes on client navigation).
+  useEffect(() => {
+    setAnimClass('');
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setAnimClass('page-transition'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pathname]);
 
   return (
     <div
-      key={pathname}
-      className="page-transition"
+      className={animClass}
       style={{
         // Ensure the wrapper fills the main column without
         // adding any layout side-effects.

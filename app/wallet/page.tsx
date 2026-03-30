@@ -40,7 +40,7 @@ export default function WalletPage() {
   // ── Redirect if not logged in ─────────────────
   useEffect(() => {
     if (!loading && !user) router.push('/login');
-  }, [loading, user]);
+  }, [user, loading, router]);
 
   // ── Fetch transaction history from bids table ─
   async function fetchHistory() {

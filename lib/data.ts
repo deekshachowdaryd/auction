@@ -189,7 +189,7 @@ export const AUCTIONS: Auction[] = [
     bidCount:      0,
     watcherCount:  211,
     endsAt:        NOW + 2 * DAY,
-    startedAt:     NOW + 1 * HOUR,
+    startedAt:     NOW + 4 * HOUR,
     imageUrl:      'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=800&q=80&auto=format&fit=crop',
     seller:        { handle: 'sys_depot', reputation: 98, totalSales: 412 },
     specs: {
@@ -330,7 +330,7 @@ export const AUCTIONS: Auction[] = [
     bidCount:      0,
     watcherCount:  3821,
     endsAt:        NOW + 3 * DAY,
-    startedAt:     NOW + 6 * HOUR,
+    startedAt:     NOW + 18 * HOUR,
     imageUrl:      'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80&auto=format&fit=crop',
     seller:        { handle: 'blocks_max', reputation: 100, totalSales: 9 },
     specs: {

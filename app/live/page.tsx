@@ -472,11 +472,18 @@ function LiveAuctionCard({
 
           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
             Last:{' '}
-            <span className="mono" style={{ color: 'var(--text-secondary)' }}>
-              {/* ✅ lastBidder is now deterministic from seeded data.ts —
-                  safe to render on both server and client */}
-              {auction.lastBidder}
-            </span>
+            {/* Gate behind isMounted — Realtime bot bids update AuctionContext
+                before hydration completes, causing lastBidder to differ between
+                the server-rendered HTML and the first client render. */}
+            {isMounted ? (
+              <span className="mono" style={{ color: 'var(--text-secondary)' }}>
+                {auction.lastBidder}
+              </span>
+            ) : (
+              <span className="mono" style={{ color: 'var(--text-tertiary)' }}>
+                ——
+              </span>
+            )}
           </span>
 
           {/* ✅ Time remaining — gated: Date.now() only runs client-side */}

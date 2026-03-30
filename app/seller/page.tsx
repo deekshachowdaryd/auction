@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/live/context/AuthContext';
+import { useAuctions } from '@/app/live/context/AuctionContext';
 import { supabase } from '@/lib/supabase';
-import type { AuctionCategory } from '@/lib/types';
+import type { AuctionCategory, Auction } from '@/lib/types';
 
 // ── Types ─────────────────────────────────────────
 interface SellerListing {
@@ -120,6 +121,7 @@ const EMPTY_FORM = {
 // ══════════════════════════════════════════════════
 export default function SellerPage() {
   const { user, profile, loading } = useAuth();
+  const { dispatch }               = useAuctions();
   const router                     = useRouter();
 
   const [tab,       setTab]       = useState<Tab>('listings');
@@ -147,19 +149,18 @@ export default function SellerPage() {
   useEffect(() => { fetchListings(); }, [user]);
 
   // ── Loading / unauthed states ─────────────────
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  if (loading || !user) {
     return (
-      <div style={{ padding: '48px', textAlign: 'center' }}>
-        <span className="mono" style={{ fontSize: '12px', color: 'var(--text-tertiary)', letterSpacing: '0.08em' }}>
-          LOADING...
-        </span>
+      <div style={{ padding: '64px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+        <h2 className="mono" style={{ fontSize: '14px', letterSpacing: '0.08em' }}>AUTHENTICATING...</h2>
       </div>
     );
-  }
-
-  if (!user) {
-    router.push('/login');
-    return null;
   }
 
   if (profile?.role && profile.role !== 'seller') {
@@ -201,13 +202,41 @@ export default function SellerPage() {
       category:      form.category,
       current_bid:   Number(form.startingPrice),
       bid_count:     0,
-      status:        'UPCOMING',
+      status:        'LIVE',
       ends_at:       endsAt,
       updated_at:    new Date().toISOString(),
       seller_id:     user!.id,
     });
 
     if (error) { setFormError(error.message); setFormState('error'); return; }
+
+    // Locally dispatch exact mock so it's instantly available on the global Market feed
+    const newAuction: Auction = {
+      id,
+      title:         form.title.trim(),
+      subtitle:      'New Listing',
+      category:      form.category,
+      status:        'LIVE',
+      currentBid:    Number(form.startingPrice),
+      reservePrice:  Number(form.reservePrice),
+      startingPrice: Number(form.startingPrice),
+      buyNowPrice:   form.buyNowPrice ? Number(form.buyNowPrice) : null,
+      bidCount:      0,
+      watcherCount:  0,
+      endsAt:        endsAt,
+      startedAt:     Date.now(),
+      imageUrl:      null,
+      seller: {
+        handle:     profile?.handle || 'me',
+        reputation: 100,
+        totalSales: 0,
+      },
+      specs:         {},
+      recentBids:    [],
+      priceHistory:  [{ t: Date.now(), price: Number(form.startingPrice) }],
+      tags:          ['NEW LISTING'],
+    };
+    dispatch({ type: 'NEW_AUCTION', payload: newAuction });
 
     setFormState('success');
     setForm(EMPTY_FORM);

@@ -1,13 +1,14 @@
+'use client';
+
 // ═══════════════════════════════════════════════════
-//  AUCTION DETAIL PAGE — Server Component
-//  Static shell only: breadcrumb, title, specs, tags.
-//  All live/interactive sections are delegated to
-//  LiveDetailClient (a 'use client' island).
+//  AUCTION DETAIL PAGE — Client Component
+//  Reads directly from live global stateto support 
+//  brand new dynamically created database listings.
 // ═══════════════════════════════════════════════════
 
-import { notFound } from 'next/navigation';
+import { notFound, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getAuctionById } from '@/lib/data';
+import { useAuctions } from '@/app/live/context/AuctionContext';
 import type { AuctionStatus, AuctionCategory } from '@/lib/types';
 import LiveDetailClient from './LiveDetailClient';
 
@@ -41,14 +42,19 @@ function formatPrice(n: number): string {
 
 // ── Page ──────────────────────────────────────────
 
-export default async function AuctionDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const auction = getAuctionById(id);
-  if (!auction) notFound();
+export default function AuctionDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
+  const { getAuction } = useAuctions();
+  const auction = getAuction(id);
+
+  if (!auction) {
+    return (
+      <div style={{ padding: '64px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+        <h2 className="mono" style={{ fontSize: '14px', letterSpacing: '0.08em' }}>LOADING AUCTION / 404</h2>
+      </div>
+    );
+  }
 
   const statusCol = statusColor(auction.status);
   const catColor  = CATEGORY_COLORS[auction.category];

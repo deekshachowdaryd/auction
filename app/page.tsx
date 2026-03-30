@@ -1,15 +1,15 @@
+'use client';
+
 // ═══════════════════════════════════════════════════
-//  ALL MARKETS — Server Component
+//  ALL MARKETS — Client Component
 //  Reads filter/sort from URL search params.
-//  No useState — URL is the state store.
+//  Reads live auction data from AuctionContext.
 // ═══════════════════════════════════════════════════
 
 import Link from 'next/link';
-import {
-  AUCTIONS,
-  MARKET_SUMMARY,
-  getLiveAuctions,
-} from '@/lib/data';
+import { useSearchParams } from 'next/navigation';
+import { MARKET_SUMMARY } from '@/lib/data';
+import { useAuctions } from '@/app/live/context/AuctionContext';
 import type { Auction, AuctionStatus, AuctionCategory, SortKey } from '@/lib/types';
 
 // ── Helpers ───────────────────────────────────────
@@ -84,18 +84,19 @@ function applyFilters(
   return result;
 }
 
-// ── Page (Server Component) ───────────────────────
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const category = (params?.cat as string) ?? 'All';
-  const sort = (params?.sort as string) ?? 'endingSoon';
+import { Suspense } from 'react';
 
-  const filtered = applyFilters(AUCTIONS, category, sort);
-  const live      = getLiveAuctions().length;
+// ── Client Component Content ──────────────────────
+function MarketContent() {
+  const searchParams = useSearchParams();
+  const category = searchParams.get('cat') ?? 'All';
+  const sort     = searchParams.get('sort') ?? 'newest';
+
+  const { state } = useAuctions();
+  const allAuctions = Array.from(state.auctions.values());
+
+  const filtered = applyFilters(allAuctions, category, sort);
+  const live     = allAuctions.filter(a => a.status === 'LIVE' || a.status === 'ENDING').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -253,7 +254,6 @@ export default async function HomePage({
                   border:          'var(--border-subtle)',
                   cursor:          'pointer',
                   transition:      'var(--transition-fast)',
-                  // We'll handle hover via CSS class below
                 }}
                 className="auction-row"
               >
@@ -363,7 +363,7 @@ export default async function HomePage({
                   }}
                 >
                   {item.status === 'UPCOMING'
-                    ? `STARTS ${formatTimeLeft(item.startedAt)}`
+                    ? `STARTS ${formatTimeLeft(item.startedAt).replace('ENDED', 'NOW')}`
                     : item.status === 'SOLD'
                       ? '—'
                       : formatTimeLeft(item.endsAt)}
@@ -400,5 +400,13 @@ export default async function HomePage({
         {'>'} {filtered.length} results · sorted by {sort} · filter: {category}
       </p>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <MarketContent />
+    </Suspense>
   );
 }

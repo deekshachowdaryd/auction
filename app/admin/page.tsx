@@ -167,9 +167,9 @@ export default function AdminPage() {
   
   useEffect(() => {
     if (!loading && !user) router.push('/login');
-  }, [loading, user]);
+  }, [user, loading, router]);
 
-  if (!loading && !user) return null;
+  if (loading || !user) return null;
   if (profile?.role && profile.role !== 'manager') return <AccessDenied role={profile.role} />;
 
   // ── User actions ──────────────────────────────
