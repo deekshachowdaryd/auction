@@ -418,7 +418,14 @@ export default function TopBar() {
 
         {/* Nav */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-          {NAV_LINKS.map(navItem => {
+          {NAV_LINKS
+            .filter(navItem => {
+              // Hide WALLET link if we're on seller or admin pages
+              const isSpecial = pathname.startsWith('/seller') || pathname.startsWith('/admin')
+              if (isSpecial && navItem.label === 'WALLET') return false
+              return true
+            })
+            .map(navItem => {
             const isActive = navItem.href === '/' ? pathname === '/' : pathname.startsWith(navItem.href)
             return (
               <Link
@@ -504,7 +511,7 @@ export default function TopBar() {
             )}
           </div>
           {/* Balance — real from Supabase, fallback while loading */}
-          {user && (
+          {(user && !pathname.startsWith('/seller') && !pathname.startsWith('/admin')) && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               padding: '6px 14px', borderRadius: '4px',

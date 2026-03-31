@@ -10,61 +10,59 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { AUCTIONS } from '@/lib/data'
+import { useAuctions } from '@/app/live/context/AuctionContext'
 import type { AuctionCategory } from '@/lib/types'
 
-// ── Compute real counts from live data ────────────
-// CS Note: reduce() here is one pass over the array (O(n))
-// building a frequency map — more efficient than calling
-// .filter() six separate times (which would be 6×O(n)).
-
-const CATEGORY_COUNTS = AUCTIONS.reduce<Record<string, number>>(
-  (acc, a) => {
-    acc[a.category] = (acc[a.category] ?? 0) + 1
-    return acc
-  },
-  {}
-)
-
-const CATEGORIES: {
-  label: AuctionCategory | 'All'
-  count: number
-  icon:  string
-}[] = [
-  { label: 'All',           count: AUCTIONS.length,                      icon: '◈' },
-  { label: 'Electronics',   count: CATEGORY_COUNTS['Electronics']   ?? 0, icon: '⬡' },
-  { label: 'Digital Art',   count: CATEGORY_COUNTS['Digital Art']   ?? 0, icon: '◇' },
-  { label: 'Rare Sneakers', count: CATEGORY_COUNTS['Rare Sneakers'] ?? 0, icon: '◉' },
-  { label: 'Watches',       count: CATEGORY_COUNTS['Watches']       ?? 0, icon: '◎' },
-  { label: 'Keyboards',     count: CATEGORY_COUNTS['Keyboards']     ?? 0, icon: '▦' },
-]
-
-// ── Compute real system status numbers ────────────
-const LIVE_COUNT     = AUCTIONS.filter(a => a.status === 'LIVE').length
-const ENDING_COUNT   = AUCTIONS.filter(a => a.status === 'ENDING').length
-const UPCOMING_COUNT = AUCTIONS.filter(a => a.status === 'UPCOMING').length
-const TOTAL_WATCHERS = AUCTIONS.reduce((acc, a) => acc + a.watcherCount, 0)
-const TOTAL_BIDS     = AUCTIONS.reduce((acc, a) => acc + a.bidCount, 0)
-
-const CATEGORY_COLORS: Record<string, string> = {
-  'All':           'var(--accent-green)',
-  'Electronics':   'var(--accent-blue)',
-  'Digital Art':   'var(--accent-green)',
-  'Rare Sneakers': 'var(--accent-amber)',
-  'Watches':       'var(--accent-red)',
-  'Keyboards':     '#a78bfa',
-}
-
 export default function SideBar() {
-  const searchParams = useSearchParams()
-  const currentCat   = searchParams.get('cat')  ?? 'All'
-  const currentSort  = searchParams.get('sort') ?? 'endingSoon'
+  const { getAllAuctions } = useAuctions()
+  const auctions         = getAllAuctions()
+  const searchParams     = useSearchParams()
+  const currentCat       = searchParams.get('cat')  ?? 'All'
+  const currentSort      = searchParams.get('sort') ?? 'endingSoon'
+
+  // ── Compute real counts from live data ────────────
+  const categoryCounts = auctions.reduce<Record<string, number>>(
+    (acc, a) => {
+      acc[a.category] = (acc[a.category] ?? 0) + 1
+      return acc
+    },
+    {}
+  )
+
+  const categories: {
+    label: AuctionCategory | 'All'
+    count: number
+    icon:  string
+  }[] = [
+    { label: 'All',           count: auctions.length,                      icon: '◈' },
+    { label: 'Electronics',   count: categoryCounts['Electronics']   ?? 0, icon: '⬡' },
+    { label: 'Digital Art',   count: categoryCounts['Digital Art']   ?? 0, icon: '◇' },
+    { label: 'Rare Sneakers', count: categoryCounts['Rare Sneakers'] ?? 0, icon: '◉' },
+    { label: 'Watches',       count: categoryCounts['Watches']       ?? 0, icon: '◎' },
+    { label: 'Keyboards',     count: categoryCounts['Keyboards']     ?? 0, icon: '▦' },
+  ]
+
+  // ── Compute real system status numbers ────────────
+  const liveCount     = auctions.filter(a => a.status === 'LIVE').length
+  const endingCount   = auctions.filter(a => a.status === 'ENDING').length
+  const upcomingCount = auctions.filter(a => a.status === 'UPCOMING').length
+  const totalWatchers = auctions.reduce((acc, a) => acc + a.watcherCount, 0)
+  const totalBids     = auctions.reduce((acc, a) => acc + a.bidCount, 0)
+
+  const categoryColors: Record<string, string> = {
+    'All':           'var(--accent-green)',
+    'Electronics':   'var(--accent-blue)',
+    'Digital Art':   'var(--accent-green)',
+    'Rare Sneakers': 'var(--accent-amber)',
+    'Watches':       'var(--accent-red)',
+    'Keyboards':     '#a78bfa',
+  }
 
   const STATUS_ITEMS = [
-    { label: 'Live Now',   value: LIVE_COUNT,                            color: 'var(--accent-green)' },
-    { label: 'Ending <1h', value: ENDING_COUNT,                          color: 'var(--accent-red)'   },
-    { label: 'Upcoming',   value: UPCOMING_COUNT,                        color: 'var(--accent-blue)'  },
-    { label: 'Watchers',   value: TOTAL_WATCHERS.toLocaleString('en-US'), color: 'var(--accent-amber)' },
+    { label: 'Live Now',   value: liveCount,                             color: 'var(--accent-green)' },
+    { label: 'Ending <1h', value: endingCount,                           color: 'var(--accent-red)'   },
+    { label: 'Upcoming',   value: upcomingCount,                         color: 'var(--accent-blue)'  },
+    { label: 'Watchers',   value: totalWatchers.toLocaleString('en-US'), color: 'var(--accent-amber)' },
   ]
 
   return (
@@ -91,9 +89,9 @@ export default function SideBar() {
           MARKETS
         </div>
 
-        {CATEGORIES.map((cat) => {
+        {categories.map((cat: any) => {
           const isActive = cat.label === currentCat
-          const dotColor = CATEGORY_COLORS[cat.label] ?? 'var(--accent-green)'
+          const dotColor = categoryColors[cat.label] ?? 'var(--accent-green)'
 
           return (
             <Link
@@ -212,7 +210,7 @@ export default function SideBar() {
             color:              'var(--text-secondary)',
             fontVariantNumeric: 'tabular-nums',
           }}>
-            {TOTAL_BIDS.toLocaleString()}
+            {totalBids.toLocaleString()}
           </span>
         </div>
       </div>

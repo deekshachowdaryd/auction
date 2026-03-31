@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { searchAuctions, SearchResult } from '@/lib/data'
-import type { Auction } from '@/lib/types'
+import { useAuctions } from '@/app/live/context/AuctionContext';
+import type { Auction } from '@/lib/types';
 
 // ── Helpers ───────────────────────────────────────
 
@@ -69,18 +69,17 @@ function Highlight({ text, query }: { text: string; query: string }) {
 // ── Single result row ─────────────────────────────
 
 function ResultRow({
-  result,
+  auction,
   query,
   isActive,
   onMouseEnter,
 }: {
-  result:       SearchResult
+  auction:      Auction
   query:        string
   isActive:     boolean
   onMouseEnter: () => void
 }) {
-  const { auction } = result
-  const st          = STATUS_STYLES[auction.status]  // ✅ now defined above
+  const st          = STATUS_STYLES[auction.status as keyof typeof STATUS_STYLES]
   const isLive      = auction.status === 'LIVE' || auction.status === 'ENDING'
 
   return (
@@ -137,11 +136,11 @@ function ResultRow({
             <Highlight text={auction.subtitle} query={query} />
           </p>
 
-          {auction.tags.some(t => t.includes(query.toLowerCase())) && (
+          {auction.tags.some((t: string) => t.toLowerCase().includes(query.toLowerCase())) && (
             <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
               {auction.tags
-                .filter(t => t.includes(query.toLowerCase()))
-                .map(tag => (
+                .filter((t: string) => t.toLowerCase().includes(query.toLowerCase()))
+                .map((tag: string) => (
                   <span key={tag} style={{
                     fontSize:        '10px',
                     fontFamily:      'var(--font-mono)',
@@ -223,6 +222,7 @@ function CategoryChip({ label, onClick }: { label: string; onClick: () => void }
 export default function SearchPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
+  const { state }    = useAuctions()
 
   const [query,          setQuery]          = useState(searchParams.get('q') ?? '')
   const [debouncedQuery, setDebouncedQuery] = useState(query)
@@ -231,15 +231,34 @@ export default function SearchPage() {
 
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Client-side search implementation over the live context
+  const results = useMemo(() => {
+    if (!debouncedQuery.trim()) return []
+    const q = debouncedQuery.toLowerCase()
+    return Array.from(state.auctions.values())
+      .filter(a => 
+        a.title.toLowerCase().includes(q) || 
+        a.subtitle.toLowerCase().includes(q) || 
+        a.category.toLowerCase().includes(q) ||
+        a.tags.some(t => t.toLowerCase().includes(q))
+      )
+      .sort((a, b) => b.bidCount - a.bidCount) // Basic relevance: popularity
+  }, [debouncedQuery, state.auctions])
+
   useEffect(() => {
     setIsMounted(true)
     inputRef.current?.focus()
   }, [])
 
+  // Sync typed query to URL conditionally to break Next.js router loop.
+  // We compare the URL string before firing replace() to prevent infinite re-renders.
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query)
       setCursor(-1)
+
+      const currentQ = searchParams.get('q') ?? ''
+      if (currentQ === query) return // break the infinite layout loop
 
       const params = new URLSearchParams(searchParams.toString())
       if (query) { params.set('q', query) } else { params.delete('q') }
@@ -248,8 +267,6 @@ export default function SearchPage() {
 
     return () => clearTimeout(timer)
   }, [query, router, searchParams])
-
-  const results = searchAuctions(debouncedQuery)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
@@ -263,7 +280,7 @@ export default function SearchPage() {
         break
       case 'Enter':
         if (cursor >= 0 && results[cursor]) {
-          router.push(`/auction/${results[cursor].auction.id}`)
+          router.push(`/auction/${results[cursor].id}`)
         }
         break
       case 'Escape':
@@ -281,7 +298,7 @@ export default function SearchPage() {
           SEARCH
         </h2>
         <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          25 listings · full-text · scored by relevance
+          {Array.from(state.auctions.values()).length} listings · full-text · dynamic live feed
         </p>
       </div>
 
@@ -349,7 +366,7 @@ export default function SearchPage() {
       {!debouncedQuery && (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.3 }}>⌕</div>
-          <p>Start typing to search across all 25 listings</p>
+          <p>Start typing to search across all {Array.from(state.auctions.values()).length} listings</p>
           <p style={{ marginTop: '6px', fontSize: '11px' }}>
             Try:{' '}
             <span className="mono" style={{ color: 'var(--text-secondary)' }}>rolex</span>,{' '}
@@ -390,10 +407,10 @@ export default function SearchPage() {
             </span>
           </div>
 
-          {results.map((result, i) => (
+          {results.map((auction: Auction, i: number) => (
             <ResultRow
-              key={result.auction.id}
-              result={result}
+              key={auction.id}
+              auction={auction}
               query={debouncedQuery}
               isActive={isMounted && cursor === i}
               onMouseEnter={() => setCursor(i)}

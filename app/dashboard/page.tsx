@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useWatchlist } from '@/lib/hooks/useWatchlist';
 import { useMyBids } from '@/app/live/context/MyBidsContext';
-import { AUCTIONS } from '@/lib/data';
+import { useAuctions } from '@/app/live/context/AuctionContext';
 import type { MyBid } from '@/lib/hooks/useMyBids';
 
 function formatPrice(n: number): string {
@@ -188,8 +188,9 @@ function WatchRow({
   auctionId: string;
   onRemove: (id: string) => void;
 }) {
-  // O(1) lookup from the Map in data.ts
-  const auction = AUCTIONS.find(a => a.id === auctionId);
+  const { state } = useAuctions();
+  // O(1) lookup from the Map in AuctionContext
+  const auction = state.auctions.get(auctionId);
   if (!auction) return null;
 
   const isEnding = auction.status === 'ENDING';

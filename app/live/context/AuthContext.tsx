@@ -39,18 +39,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('id, handle, avatar_initials, balance, role')
       .eq('id', userId)
       .single();
+    
     if (error || !data) return;
+
+    // Explicitly normalize balance to 0 if it came back null or missing from a new signup
+    const normalizedBalance = data.balance ?? 0;
+
+    // If we detect a null or undefined balance on a new row, fix it in the DB immediately
+    if (data.balance === null) {
+      await supabase.from('users').update({ balance: 0 }).eq('id', userId);
+    }
+
     setProfile({
       id:             data.id,
       handle:         data.handle,
       avatarInitials: data.avatar_initials,
-      balance:        data.balance,
+      balance:        normalizedBalance,
       role:           data.role,
     });
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      // If the refresh token is invalid/not found, sign out to clear the broken local session
+      if (error && error.message.includes('Refresh Token')) {
+        supabase.auth.signOut().catch(() => {});
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
@@ -89,7 +103,7 @@ const signIn = useCallback(async (handle: string, password: string) => {
       email:    fakeEmail,
       password,
       options: {
-      data: { handle, role },
+      data: { handle, role, balance: 0 },
       emailRedirectTo: undefined,
   },
 });

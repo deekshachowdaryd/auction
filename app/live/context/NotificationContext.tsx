@@ -44,7 +44,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       } else {
         setNotifications([]);
       }
-    } catch { /* silent */ }
+    } catch { 
+      setNotifications([]); 
+    }
   }, [user?.id]);
 
   // Persist on every change

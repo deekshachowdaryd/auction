@@ -9,8 +9,8 @@ import {
   useEffect,
   ReactNode,
 } from 'react';
-import { AUCTIONS } from '@/lib/data';
-import type { Auction } from '@/lib/types';
+// Auction state is now fully database-driven from Supabase
+import type { Auction, AuctionStatus } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 
 // ── State shape ───────────────────────────────────
@@ -44,6 +44,14 @@ export type AuctionAction =
   | {
       type: 'NEW_AUCTION';
       payload: Auction;
+    }
+  | {
+      type: 'UPDATE_AUCTION';
+      payload: Partial<Auction> & { id: string };
+    }
+  | {
+      type: 'DELETE_AUCTION';
+      payload: { id: string };
     }
   | {
       type: 'RESET';
@@ -128,6 +136,31 @@ function auctionReducer(
       return { auctions: updatedAuctions, lastUpdated: Date.now() };
     }
 
+    case 'UPDATE_AUCTION': {
+      const auction = state.auctions.get(action.payload.id);
+      if (!auction) return state;
+
+      const nextMap = new Map(state.auctions);
+      nextMap.set(action.payload.id, { ...auction, ...action.payload });
+
+      return {
+        ...state,
+        auctions: nextMap,
+        lastUpdated: Date.now(),
+      };
+    }
+
+    case 'DELETE_AUCTION': {
+      const nextMap = new Map(state.auctions);
+      nextMap.delete(action.payload.id);
+      
+      return {
+        ...state,
+        auctions: nextMap,
+        lastUpdated: Date.now(),
+      };
+    }
+
     case 'RESET': {
       return buildInitialState();
     }
@@ -137,10 +170,12 @@ function auctionReducer(
   }
 }
 
-// ── Initial state ─────────────────────────────────
+// ── Boot sequence ───────────────────────────────────
 function buildInitialState(): AuctionState {
+  // Initialize with completely empty maps; we strictly pull from the Database
+  const auctionsMap = new Map<string, Auction>();
   return {
-    auctions:    new Map(AUCTIONS.map(a => [a.id, a])),
+    auctions: auctionsMap,
     lastUpdated: Date.now(),
   };
 }
@@ -163,48 +198,66 @@ export function AuctionProvider({ children }: { children: ReactNode }) {
   // Fetch from Supabase on mount
   useEffect(() => {
     async function hydrateAuctions() {
-      const { data, error } = await supabase.from('auctions').select('*');
-      if (error || !data) return;
+      // Fetch auctions and recent bids in parallel
+      const [auctionsRes, bidsRes] = await Promise.all([
+        supabase.from('auctions').select('*'),
+        supabase
+          .from('bids')
+          .select('id, auction_id, amount, bidder, placed_at')
+          .order('placed_at', { ascending: false })
+          .limit(500), // grab enough recent bids to cover all auctions
+      ]);
 
-      const newMap = new Map<string, Auction>(state.auctions); // keep static mocks as base
+      if (auctionsRes.error || !auctionsRes.data) return;
 
-      for (const row of data) {
-        let parsedEndsAt = Date.now() + 86400000;
-        if (row.ends_at) {
-          parsedEndsAt = typeof row.ends_at === 'string' ? new Date(row.ends_at).getTime() : Number(row.ends_at);
-          if (parsedEndsAt < 20000000000) parsedEndsAt *= 1000; // auto-correct epoch seconds
-          if (isNaN(parsedEndsAt)) parsedEndsAt = Date.now() + 86400000;
+      // Group bids by auction_id for O(1) lookup
+      const bidsByAuction = new Map<string, typeof bidsRes.data>();
+      if (bidsRes.data) {
+        for (const bid of bidsRes.data) {
+          if (!bidsByAuction.has(bid.auction_id)) {
+            bidsByAuction.set(bid.auction_id, []);
+          }
+          bidsByAuction.get(bid.auction_id)!.push(bid);
         }
+      }
 
-        // Demo Environment Self-Healing:
-        // If the database time has historically passed but the system hasn't marked it SOLD,
-        // automatically push the timer to +24hrs (or 30 mins) so the UI doesn't say "ENDED" on a LIVE badge.
-        let safeStatus = row.status;
+      const newMap = new Map<string, Auction>();
 
-        if ((safeStatus === 'LIVE' || safeStatus === 'ENDING') && parsedEndsAt <= Date.now()) {
-          parsedEndsAt = Date.now() + (safeStatus === 'ENDING' ? 1800000 : 86400000);
-        }
+      for (const row of auctionsRes.data) {
+        let safeStatus = row.status as AuctionStatus;
+        if (safeStatus === ('OUTBID' as any)) safeStatus = 'ENDING';
 
-        // Without a backend column for started_at, UPCOMING auctions default to Date.now()
-        // which evaluates to '<= 0' instantly. We mathematically push them forward
-        // using a deterministic pseudo-random hash of their ID so the UI shows
-        // beautifully staggered unique start times (e.g. 5h, 12h, 2d).
-        let idHash = 0;
-        for (let i = 0; i < row.id.length; i++) {
-          idHash = (idHash << 5) - idHash + row.id.charCodeAt(i);
-          idHash |= 0;
-        }
-        const offsetMs = 3600000 + (Math.abs(idHash) % 255600000); // Between 1 and 72 hours
+        let parsedEndsAt = Number(row.ends_at);
+        if (isNaN(parsedEndsAt)) parsedEndsAt = Date.now() + 86400000;
         
-        const parsedStartedAt = safeStatus === 'UPCOMING' 
-          ? Date.now() + offsetMs
-          : Date.now();
+        const parsedStartedAt = row.started_at ? Number(row.started_at) : parsedEndsAt - 86400000 * 7;
+        
+        // Self-Healing: if it's UPCOMING but starts in the past, push it LIVE!
+        if (safeStatus === 'UPCOMING' && Date.now() >= parsedStartedAt) safeStatus = 'LIVE';
 
-        const base = newMap.get(row.id) || {
-          // Mock missing UI fields for new listings
+        // Build recentBids and priceHistory from the persisted bids table
+        const auctionBids = (bidsByAuction.get(row.id) ?? []).slice(0, 5);
+        const recentBids = auctionBids.map(b => ({
+          id:        b.id,
+          bidder:    b.bidder,
+          amount:    b.amount,
+          timestamp: new Date(b.placed_at).getTime(),
+        }));
+
+        // Build price history: start from starting price, add each bid in chronological order
+        const priceHistory: { t: number; price: number }[] = [
+          { t: parsedStartedAt, price: row.current_bid },
+          ...auctionBids
+            .slice()
+            .reverse() // oldest first for chart
+            .map(b => ({ t: new Date(b.placed_at).getTime(), price: b.amount })),
+        ];
+
+        // Initialize UI fields purely from PostgreSQL 
+        const mappedAuction: Auction = {
           id:            row.id,
           title:         row.title,
-          subtitle:      'New Listing',
+          subtitle:      row.subtitle ?? 'Premium Auction Listing',
           category:      row.category,
           status:        safeStatus,
           currentBid:    row.current_bid,
@@ -215,35 +268,25 @@ export function AuctionProvider({ children }: { children: ReactNode }) {
           watcherCount:  0,
           endsAt:        parsedEndsAt,
           startedAt:     parsedStartedAt,
-          imageUrl:      null,
+          imageUrl:      row.image_url ?? null,
           seller: {
             handle:     `seller_${row.seller_id?.substring(0,6) || 'anon'}`,
             reputation: 100,
             totalSales: 0,
           },
-          specs:         {},
-          recentBids:    [],
-          priceHistory:  [{ t: Date.now(), price: row.current_bid }],
-          tags:          ['NEW LISTING'],
+          specs:        row.specs ?? {},
+          recentBids,
+          priceHistory,
+          tags:         row.tags ?? [],
         };
 
-        newMap.set(row.id, {
-          ...base,
-          title:      row.title,
-          category:   row.category,
-          status:     safeStatus,
-          currentBid: row.current_bid,
-          bidCount:   row.bid_count,
-          endsAt:     parsedEndsAt,
-          startedAt:  parsedStartedAt,
-        });
+        newMap.set(row.id, mappedAuction);
       }
       dispatch({ type: 'HYDRATE_AUCTIONS', payload: newMap });
     }
     
-    // Only run if we actually have state.auctions initialized and the database hasn't been fetched yet
     hydrateAuctions();
-  }, []);
+  }, [dispatch]);
 
   const getLiveAuctions = useCallback(() => {
     return Array.from(state.auctions.values()).filter(

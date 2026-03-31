@@ -160,7 +160,7 @@ export function useSupabaseRealtime({
           const newAuction = {
             id:            row.id,
             title:         row.title,
-            subtitle:      'New Listing',
+            subtitle:      row.subtitle ?? 'Premium Auction Listing',
             category:      row.category,
             status:        row.status,
             currentBid:    row.current_bid,
@@ -171,16 +171,16 @@ export function useSupabaseRealtime({
             watcherCount:  0,
             endsAt:        parsedEndsAt,
             startedAt:     Date.now(),
-            imageUrl:      null,
+            imageUrl:      row.image_url ?? null,
             seller: {
               handle:     `seller_${row.seller_id?.substring(0,6) || 'anon'}`,
               reputation: 100,
               totalSales: 0,
             },
-            specs:         {},
+            specs:         row.specs ?? {},
             recentBids:    [],
             priceHistory:  [{ t: Date.now(), price: row.current_bid }],
-            tags:          ['NEW LISTING']
+            tags:          row.tags ?? []
           };
 
           // Only dispatch if we don't already have it
@@ -188,6 +188,33 @@ export function useSupabaseRealtime({
             dispatch({ type: 'NEW_AUCTION', payload: newAuction as any });
             info('NEW LISTING FOUND', `${row.title} just hit the market!`);
           }
+        }
+      )
+      .on<any>(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'auctions' },
+        ({ new: row }) => {
+          // Sync any updates (like Admin force-close) directly into Context state
+          dispatch({ 
+            type: 'UPDATE_AUCTION', 
+            payload: {
+              id: row.id,
+              status: row.status,
+              currentBid: row.current_bid,
+              title: row.title,
+            } as any 
+          });
+        }
+      )
+      .on<any>(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'auctions' },
+        ({ old }) => {
+          // If an Admin deletes an auction entirely, instantly yank it from all connected clients
+          dispatch({ 
+            type: 'DELETE_AUCTION', 
+            payload: { id: old.id } 
+          });
         }
       )
       .subscribe();

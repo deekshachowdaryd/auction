@@ -6,9 +6,10 @@
 //  Reads live auction data from AuctionContext.
 // ═══════════════════════════════════════════════════
 
+import React, { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { MARKET_SUMMARY } from '@/lib/data';
+// Removed hardcoded MARKET_SUMMARY import to use live context data instead
 import { useAuctions } from '@/app/live/context/AuctionContext';
 import type { Auction, AuctionStatus, AuctionCategory, SortKey } from '@/lib/types';
 
@@ -84,13 +85,15 @@ function applyFilters(
   return result;
 }
 
-import { Suspense } from 'react';
-
 // ── Client Component Content ──────────────────────
 function MarketContent() {
   const searchParams = useSearchParams();
   const category = searchParams.get('cat') ?? 'All';
   const sort     = searchParams.get('sort') ?? 'newest';
+
+  // Prevent hydration mismatch on Server Side Rendered relative times
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const { state } = useAuctions();
   const allAuctions = Array.from(state.auctions.values());
@@ -111,11 +114,11 @@ function MarketContent() {
             ALL MARKETS
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {MARKET_SUMMARY.totalListings} active listings
+            {allAuctions.length} active listings
             <span style={{ margin: '0 8px', color: 'var(--bg-border)' }}>·</span>
             {live} live auctions
             <span style={{ margin: '0 8px', color: 'var(--bg-border)' }}>·</span>
-            {MARKET_SUMMARY.totalBidsToday} bids today
+            {allAuctions.reduce((acc, a) => acc + a.bidCount, 0)} total bids
           </p>
         </div>
         <span className="mono" style={{ fontSize: '11px', color: 'var(--accent-green)', letterSpacing: '0.06em' }}>
@@ -362,7 +365,7 @@ function MarketContent() {
                     textAlign: 'center',
                   }}
                 >
-                  {item.status === 'UPCOMING'
+                  {!mounted ? '...' : item.status === 'UPCOMING'
                     ? `STARTS ${formatTimeLeft(item.startedAt).replace('ENDED', 'NOW')}`
                     : item.status === 'SOLD'
                       ? '—'

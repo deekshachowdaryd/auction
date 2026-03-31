@@ -11,11 +11,15 @@ import type { AuctionCategory, Auction } from '@/lib/types';
 interface SellerListing {
   id:          string;
   title:       string;
+  subtitle:    string;
   category:    string;
   current_bid: number;
   bid_count:   number;
   status:      string;
   ends_at:     number;
+  image_url:   string;
+  tags:        string[];
+  specs:       Record<string, string>;
 }
 
 type Tab = 'listings' | 'create';
@@ -110,6 +114,9 @@ const EMPTY_FORM = {
   title:         '',
   subtitle:      '',
   category:      'Electronics' as AuctionCategory,
+  imageUrl:      '',
+  tags:          [] as string[],
+  specs:         {} as Record<string, string>,
   startingPrice: '',
   reservePrice:  '',
   buyNowPrice:   '',
@@ -131,6 +138,7 @@ export default function SellerPage() {
   const [form,      setForm]      = useState(EMPTY_FORM);
   const [formState, setFormState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [formError, setFormError] = useState('');
+  const [tagInput,  setTagInput]  = useState('');
 
   // ── Fetch seller's own listings ───────────────
   async function fetchListings() {
@@ -138,11 +146,25 @@ export default function SellerPage() {
     setFetching(true);
     const { data, error } = await supabase
       .from('auctions')
-      .select('id, title, category, current_bid, bid_count, status, ends_at')
+      .select('id, title, subtitle, image_url, tags, specs, category, current_bid, bid_count, status, ends_at')
       .eq('seller_id', user.id)
-      .order('ends_at', { ascending: true });
+      .order('ends_at', { ascending: false });
 
-    if (!error && data) setListings(data);
+    if (!error && data) {
+      setListings(data.map(d => ({
+        id:          d.id,
+        title:       d.title,
+        subtitle:    d.subtitle ?? '',
+        category:    d.category,
+        current_bid: d.current_bid,
+        bid_count:   d.bid_count,
+        status:      d.status === 'OUTBID' ? 'ENDING' : d.status,
+        ends_at:     d.ends_at,
+        image_url:   d.image_url ?? '',
+        tags:        d.tags ?? [],
+        specs:       d.specs ?? {},
+      })));
+    }
     setFetching(false);
   }
 
@@ -168,7 +190,7 @@ export default function SellerPage() {
   }
 
   // ── Form helpers ──────────────────────────────
-  function setField(key: keyof typeof EMPTY_FORM, val: string) {
+  function setField(key: keyof typeof EMPTY_FORM, val: any) {
     setForm(f => ({ ...f, [key]: val }));
     setFormState('idle');
     setFormError('');
@@ -194,13 +216,18 @@ export default function SellerPage() {
 
     setFormState('submitting');
     const endsAt = Date.now() + Number(form.endsInHours) * 3_600_000;
-    const id     = `auc_${Date.now().toString(36)}`;
+    const price = Number(form.startingPrice);
+    const id = `auc_${Date.now().toString(36)}`;
 
-    const { error } = await supabase.from('auctions').insert({
+    const { error: insertError } = await supabase.from('auctions').insert({
       id,
       title:         form.title.trim(),
+      subtitle:      form.subtitle.trim() || 'New Listing',
+      image_url:     form.imageUrl.trim() || null,
+      specs:         form.specs,
+      tags:          form.tags,
       category:      form.category,
-      current_bid:   Number(form.startingPrice),
+      current_bid:   price,
       bid_count:     0,
       status:        'LIVE',
       ends_at:       endsAt,
@@ -208,38 +235,39 @@ export default function SellerPage() {
       seller_id:     user!.id,
     });
 
-    if (error) { setFormError(error.message); setFormState('error'); return; }
+    if (insertError) { setFormError(insertError.message); setFormState('error'); return; }
 
     // Locally dispatch exact mock so it's instantly available on the global Market feed
     const newAuction: Auction = {
       id,
       title:         form.title.trim(),
-      subtitle:      'New Listing',
+      subtitle:      form.subtitle.trim() || 'New Listing',
       category:      form.category,
       status:        'LIVE',
-      currentBid:    Number(form.startingPrice),
+      currentBid:    price,
       reservePrice:  Number(form.reservePrice),
-      startingPrice: Number(form.startingPrice),
+      startingPrice: price,
       buyNowPrice:   form.buyNowPrice ? Number(form.buyNowPrice) : null,
       bidCount:      0,
       watcherCount:  0,
       endsAt:        endsAt,
       startedAt:     Date.now(),
-      imageUrl:      null,
+      imageUrl:      form.imageUrl.trim() || null,
       seller: {
         handle:     profile?.handle || 'me',
         reputation: 100,
         totalSales: 0,
       },
-      specs:         {},
+      specs:         form.specs,
       recentBids:    [],
       priceHistory:  [{ t: Date.now(), price: Number(form.startingPrice) }],
-      tags:          ['NEW LISTING'],
+      tags:          form.tags,
     };
     dispatch({ type: 'NEW_AUCTION', payload: newAuction });
 
     setFormState('success');
     setForm(EMPTY_FORM);
+    setTagInput('');
     await fetchListings();
     setTimeout(() => { setTab('listings'); setFormState('idle'); }, 1200);
   }
@@ -253,6 +281,10 @@ export default function SellerPage() {
 
     const { error } = await supabase.from('auctions').update({
       title:      form.title.trim(),
+      subtitle:   form.subtitle.trim() || 'Updated Listing',
+      image_url:  form.imageUrl.trim() || null,
+      tags:       form.tags,
+      specs:      form.specs,
       category:   form.category,
       updated_at: new Date().toISOString(),
     }).eq('id', listing.id).eq('seller_id', user!.id);
@@ -279,13 +311,17 @@ export default function SellerPage() {
     setEditId(listing.id);
     setForm({
       title:         listing.title,
-      subtitle:      '',
+      subtitle:      listing.subtitle,
+      imageUrl:      listing.image_url,
+      tags:          listing.tags,
+      specs:         listing.specs,
       category:      listing.category as AuctionCategory,
       startingPrice: String(listing.current_bid),
       reservePrice:  String(listing.current_bid),
       buyNowPrice:   '',
       endsInHours:   '24',
     });
+    setTagInput((listing.tags ?? []).join(', '));
     setTab('create');
   }
 
@@ -592,6 +628,115 @@ export default function SellerPage() {
                     {cat.toUpperCase()}
                   </button>
                 ))}
+              </div>
+            </FormField>
+
+            {/* Image URL */}
+            <FormField label="IMAGE URL">
+              <input
+                type="url"
+                placeholder="e.g. https://images.unsplash.com/photo-..."
+                value={form.imageUrl}
+                onChange={e => setField('imageUrl', e.target.value)}
+                style={inputStyle(false)}
+              />
+              <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                Paste a direct link to an image. Leave blank for default styling.
+              </p>
+            </FormField>
+
+            {/* Tags — free-type, parsed on blur */}
+            <FormField label="HASHTAGS">
+              <input
+                type="text"
+                placeholder="e.g. sealed, pristine, 1of1"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onBlur={() => {
+                  const parsed = tagInput
+                    .split(/[,\s]+/)
+                    .map(t => t.trim().replace(/^#+/, ''))
+                    .filter(Boolean);
+                  setField('tags', parsed);
+                  // Normalise the display string after parsing
+                  setTagInput(parsed.join(', '));
+                }}
+                style={inputStyle(false)}
+              />
+              {form.tags.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  {form.tags.map(tag => (
+                    <span key={tag} style={{
+                      fontSize: '10px', fontFamily: 'var(--font-mono)',
+                      color: 'var(--accent-amber)',
+                      backgroundColor: 'color-mix(in srgb, var(--accent-amber) 10%, transparent)',
+                      border: '1px solid color-mix(in srgb, var(--accent-amber) 25%, transparent)',
+                      borderRadius: '3px', padding: '1px 6px',
+                    }}>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                Separate tags with commas or spaces. Tags appear after you click away.
+              </p>
+            </FormField>
+
+            {/* Dimensions & Specs Grid */}
+            <FormField label="TECHNICAL SPECS">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {Object.entries(form.specs).map(([k, v], i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Key (e.g. RAM)"
+                      value={k}
+                      onChange={e => {
+                        const newKey = e.target.value;
+                        const newSpecs = { ...form.specs };
+                        const val = newSpecs[k];
+                        delete newSpecs[k];
+                        if (newKey) newSpecs[newKey] = val;
+                        setField('specs', newSpecs);
+                      }}
+                      style={{ ...inputStyle(false), fontSize: '12px' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Value (e.g. 36GB)"
+                      value={v}
+                      onChange={e => setField('specs', { ...form.specs, [k]: e.target.value })}
+                      style={{ ...inputStyle(false), fontSize: '12px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSpecs = { ...form.specs };
+                        delete newSpecs[k];
+                        setField('specs', newSpecs);
+                      }}
+                      style={{
+                        padding: '0 12px', background: 'none', border: '1px solid var(--border-subtle)',
+                        borderRadius: '6px', color: 'var(--accent-red)', cursor: 'pointer',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setField('specs', { ...form.specs, [`spec_${Object.keys(form.specs).length}`]: '' })}
+                  style={{
+                    padding: '8px', background: 'var(--bg-elevated)', border: '1px dashed var(--border-default)',
+                    borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '11px',
+                    fontFamily: 'var(--font-mono)', cursor: 'pointer', letterSpacing: '0.04em',
+                    width: '100%',
+                  }}
+                >
+                  + ADD SPECIFICATION ROW
+                </button>
               </div>
             </FormField>
 

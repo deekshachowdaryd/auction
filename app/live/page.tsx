@@ -396,17 +396,41 @@ function LiveAuctionCard({
       >
         {/* Top row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
             <div style={{
               width:           '3px',
-              height:          '40px',
+              height:          '48px',
               borderRadius:    '2px',
               backgroundColor: catColor,
               flexShrink:      0,
               boxShadow:       `0 0 8px ${catColor}`,
-              marginTop:       '2px',
             }} />
-            <div style={{ minWidth: 0 }}>
+
+            {/* ✅ Image Thumbnail */}
+            <div style={{
+              width:           '56px',
+              height:          '48px',
+              borderRadius:    '6px',
+              backgroundColor: 'var(--bg-elevated)',
+              border:          'var(--border-subtle)',
+              overflow:        'hidden',
+              flexShrink:      0,
+              display:         'flex',
+              alignItems:      'center',
+              justifyContent:  'center',
+            }}>
+              {auction.imageUrl ? (
+                <img
+                  src={auction.imageUrl}
+                  alt={auction.title}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: '16px', filter: 'grayscale(1)', opacity: 0.3 }}>🖼️</span>
+              )}
+            </div>
+
+            <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{
                 fontSize:     '13px',
                 fontWeight:   600,
