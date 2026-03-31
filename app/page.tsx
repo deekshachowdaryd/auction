@@ -1,15 +1,16 @@
+'use client';
+
 // ═══════════════════════════════════════════════════
-//  ALL MARKETS — Server Component
+//  ALL MARKETS — Client Component
 //  Reads filter/sort from URL search params.
-//  No useState — URL is the state store.
+//  Reads live auction data from AuctionContext.
 // ═══════════════════════════════════════════════════
 
+import React, { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
-import {
-  AUCTIONS,
-  MARKET_SUMMARY,
-  getLiveAuctions,
-} from '@/lib/data';
+import { useSearchParams } from 'next/navigation';
+// Removed hardcoded MARKET_SUMMARY import to use live context data instead
+import { useAuctions } from '@/app/live/context/AuctionContext';
 import type { Auction, AuctionStatus, AuctionCategory, SortKey } from '@/lib/types';
 
 // ── Helpers ───────────────────────────────────────
@@ -84,18 +85,21 @@ function applyFilters(
   return result;
 }
 
-// ── Page (Server Component) ───────────────────────
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const category = (params?.cat as string) ?? 'All';
-  const sort = (params?.sort as string) ?? 'endingSoon';
+// ── Client Component Content ──────────────────────
+function MarketContent() {
+  const searchParams = useSearchParams();
+  const category = searchParams.get('cat') ?? 'All';
+  const sort     = searchParams.get('sort') ?? 'newest';
 
-  const filtered = applyFilters(AUCTIONS, category, sort);
-  const live      = getLiveAuctions().length;
+  // Prevent hydration mismatch on Server Side Rendered relative times
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const { state } = useAuctions();
+  const allAuctions = Array.from(state.auctions.values());
+
+  const filtered = applyFilters(allAuctions, category, sort);
+  const live     = allAuctions.filter(a => a.status === 'LIVE' || a.status === 'ENDING').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -110,11 +114,11 @@ export default async function HomePage({
             ALL MARKETS
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {MARKET_SUMMARY.totalListings} active listings
+            {allAuctions.length} active listings
             <span style={{ margin: '0 8px', color: 'var(--bg-border)' }}>·</span>
             {live} live auctions
             <span style={{ margin: '0 8px', color: 'var(--bg-border)' }}>·</span>
-            {MARKET_SUMMARY.totalBidsToday} bids today
+            {allAuctions.reduce((acc, a) => acc + a.bidCount, 0)} total bids
           </p>
         </div>
         <span className="mono" style={{ fontSize: '11px', color: 'var(--accent-green)', letterSpacing: '0.06em' }}>
@@ -253,7 +257,6 @@ export default async function HomePage({
                   border:          'var(--border-subtle)',
                   cursor:          'pointer',
                   transition:      'var(--transition-fast)',
-                  // We'll handle hover via CSS class below
                 }}
                 className="auction-row"
               >
@@ -362,8 +365,8 @@ export default async function HomePage({
                     textAlign: 'center',
                   }}
                 >
-                  {item.status === 'UPCOMING'
-                    ? `STARTS ${formatTimeLeft(item.startedAt)}`
+                  {!mounted ? '...' : item.status === 'UPCOMING'
+                    ? `STARTS ${formatTimeLeft(item.startedAt).replace('ENDED', 'NOW')}`
                     : item.status === 'SOLD'
                       ? '—'
                       : formatTimeLeft(item.endsAt)}
@@ -400,5 +403,13 @@ export default async function HomePage({
         {'>'} {filtered.length} results · sorted by {sort} · filter: {category}
       </p>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <MarketContent />
+    </Suspense>
   );
 }

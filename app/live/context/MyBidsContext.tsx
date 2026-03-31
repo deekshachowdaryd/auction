@@ -6,8 +6,8 @@ import {
 } from 'react';
 import type { Auction }  from '@/lib/types';
 import { useAuctions }   from '@/app/live/context/AuctionContext';
-
-const STORAGE_KEY = 'auction_terminal_my_bids';
+import { useAuth }       from '@/app/live/context/AuthContext';
+import { supabase }      from '@/lib/supabase';
 
 export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST';
 
@@ -43,40 +43,7 @@ function computeStats(bids: MyBid[]): BidStats {
   };
 }
 
-function generateSeedBids(): MyBid[] {
-  const now  = Date.now();
-  const hour = 3_600_000;
-  return [
-    {
-      id: 'bid-001', auctionId: 'auc_001',
-      auctionTitle: 'Sony A7R V — 61MP Full-Frame Mirrorless',
-      auctionCategory: 'Electronics',
-      myAmount: 2100, currentPrice: 2100,
-      endsAt: now + 2 * hour, status: 'WINNING', placedAt: now - 15 * 60_000,
-    },
-    {
-      id: 'bid-002', auctionId: 'auc_003',
-      auctionTitle: 'Beeple — Everydays Study #112',
-      auctionCategory: 'Digital Art',
-      myAmount: 1800, currentPrice: 2200,
-      endsAt: now + 4 * hour, status: 'OUTBID', placedAt: now - 45 * 60_000,
-    },
-    {
-      id: 'bid-003', auctionId: 'auc_004',
-      auctionTitle: "Nike Air Jordan 1 Retro High OG 'Chicago'",
-      auctionCategory: 'Rare Sneakers',
-      myAmount: 950, currentPrice: 950,
-      endsAt: now - 2 * hour, status: 'WON', placedAt: now - 5 * hour,
-    },
-    {
-      id: 'bid-004', auctionId: 'auc_005',
-      auctionTitle: 'TX-65 Portico 75% Keyboard Kit',
-      auctionCategory: 'Custom Keyboards',
-      myAmount: 380, currentPrice: 380,
-      endsAt: now + 30 * 60_000, status: 'WINNING', placedAt: now - 20 * 60_000,
-    },
-  ];
-}
+
 
 // ── Context shape ─────────────────────────────────
 interface MyBidsContextValue {
@@ -95,26 +62,76 @@ export function MyBidsProvider({ children }: { children: React.ReactNode }) {
   const [bids, setBids]       = useState<MyBid[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const { state }             = useAuctions();
+  const { user, loading }     = useAuth();
 
-  // Hydrate from localStorage once on mount
+  const auctionsRef = useRef(state.auctions);
+  useEffect(() => { auctionsRef.current = state.auctions; }, [state.auctions]);
+
+  // Hydrate from DB once on mount / when user changes
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      setBids(stored ? JSON.parse(stored) : generateSeedBids());
-      if (!stored) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(generateSeedBids()));
-      }
-    } catch {
-      setBids(generateSeedBids());
+    if (loading) return; // Wait until auth state is known
+
+    if (!user) {
+      setBids([]);
+      setHydrated(true);
+      return;
     }
-    setHydrated(true);
-  }, []);
 
-  // Persist whenever bids change
-  useEffect(() => {
-    if (!hydrated) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bids)); } catch { /* silent */ }
-  }, [bids, hydrated]);
+    async function fetchBids(userId: string) {
+      const { data, error } = await supabase
+        .from('bids')
+        .select('id, auction_id, amount, placed_at')
+        .eq('user_id', userId)
+        .order('placed_at', { ascending: false });
+
+      if (error || !data || data.length === 0) {
+        setBids([]);
+        setHydrated(true);
+        return;
+      }
+
+      // Group to keep only the highest bid per auction
+      const bestBids = new Map<string, any>();
+      for (const row of data) {
+        const existing = bestBids.get(row.auction_id);
+        if (!existing || row.amount > existing.amount) {
+          bestBids.set(row.auction_id, row);
+        }
+      }
+
+      const initialBids: MyBid[] = [];
+      for (const row of Array.from(bestBids.values())) {
+        const auction = auctionsRef.current.get(row.auction_id);
+        if (!auction) continue; // auction not found in app state
+
+        let status: BidStatus = 'WINNING';
+        if (auction.status === 'SOLD') {
+          status = auction.currentBid <= row.amount ? 'WON' : 'LOST';
+        } else {
+          status = auction.currentBid > row.amount ? 'OUTBID' : 'WINNING';
+        }
+
+        initialBids.push({
+          id: row.id,
+          auctionId: auction.id,
+          auctionTitle: auction.title,
+          auctionCategory: auction.category,
+          myAmount: row.amount,
+          currentPrice: auction.currentBid,
+          endsAt: auction.endsAt,
+          status,
+          placedAt: new Date(row.placed_at).getTime(),
+        });
+      }
+
+      // Sort recent first
+      initialBids.sort((a, b) => b.placedAt - a.placedAt);
+      setBids(initialBids);
+      setHydrated(true);
+    }
+
+    fetchBids(user.id);
+  }, [user, loading]);
 
   // Sync status + currentPrice whenever AuctionContext receives a new bid
   useEffect(() => {

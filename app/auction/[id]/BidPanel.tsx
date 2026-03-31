@@ -168,21 +168,45 @@ export default function BidPanel({ auction }: { auction: Auction }) {
       return;
     }
 
-    const { error } = await supabase.rpc('place_bid', {
-      p_auction_id: auction.id,
-      p_amount:     amount,
-      p_bidder:     profile?.handle ?? 'anonymous',
-      p_user_id:    user!.id,
+    const currentBid = liveAuction.currentBid;
+    if (amount <= currentBid) {
+      setErrorMsg(`Bid must be higher than current bid of $${formatPrice(currentBid)}.`);
+      setBidState('error');
+      return;
+    }
+
+    const balance = profile?.balance ?? 0;
+    if (amount > balance) {
+      setErrorMsg(`Insufficient funds. Your balance is $${formatPrice(balance)}.`);
+      setBidState('error');
+      return;
+    }
+
+    const bidder = profile?.handle ?? 'anonymous';
+
+    // Insert bid row with the real user handle
+    const { error: bidError } = await supabase.from('bids').insert({
+      auction_id: auction.id,
+      amount,
+      bidder,
+      user_id:    user!.id,
     });
 
-    if (error) {
-      if (error.message.includes('INSUFFICIENT_FUNDS')) {
-        setErrorMsg('Insufficient balance for this bid.');
-      } else if (error.message.includes('BID_TOO_LOW')) {
-        setErrorMsg(`Price moved. Minimum is now $${formatPrice(Math.ceil(liveAuction.currentBid * 1.02))}`);
-      } else {
-        setErrorMsg(error.message);
-      }
+    if (bidError) {
+      setErrorMsg(bidError.message);
+      setBidState('error');
+      return;
+    }
+
+    // Update the auction's current_bid and bid_count
+    const { error: auctionError } = await supabase.from('auctions').update({
+      current_bid: amount,
+      bid_count:   liveAuction.bidCount + 1,
+      updated_at:  new Date().toISOString(),
+    }).eq('id', auction.id);
+
+    if (auctionError) {
+      setErrorMsg(auctionError.message);
       setBidState('error');
       return;
     }
@@ -192,7 +216,7 @@ export default function BidPanel({ auction }: { auction: Auction }) {
       payload: {
         auctionId: auction.id,
         newBid:    amount,
-        bidder:    profile?.handle ?? 'anonymous',
+        bidder,
       },
     });
     placeBid(liveAuction, amount);
@@ -208,22 +232,27 @@ export default function BidPanel({ auction }: { auction: Auction }) {
     setBuyNowState('submitting');
 
     const buyPrice = Math.max(rawPrice, liveAuction.currentBid + 1);
+    const balance  = profile?.balance ?? 0;
 
-    const { error: bidError } = await supabase.rpc('place_bid', {
-      p_auction_id: auction.id,
-      p_amount:     buyPrice,
-      p_bidder:     profile?.handle ?? 'anonymous',
-      p_user_id:    user!.id,
-      p_is_buy_now: true,
+    if (buyPrice > balance) {
+      setErrorMsg(`Insufficient funds for Buy Now ($${formatPrice(buyPrice)}). Available: $${formatPrice(balance)}.`);
+      setBidState('error');
+      return;
+    }
+
+    const bidder   = profile?.handle ?? 'anonymous';
+
+    // Insert the buy-now bid with the real user handle
+    const { error: bidError } = await supabase.from('bids').insert({
+      auction_id: auction.id,
+      amount:     buyPrice,
+      bidder,
+      user_id:    user!.id,
     });
 
     if (bidError) {
       setBuyNowState('idle');
-      if (bidError.message.includes('INSUFFICIENT_FUNDS')) {
-        setErrorMsg('Insufficient balance for Buy Now.');
-      } else {
-        setErrorMsg(bidError.message);
-      }
+      setErrorMsg(bidError.message);
       setBidState('error');
       return;
     }
@@ -231,7 +260,12 @@ export default function BidPanel({ auction }: { auction: Auction }) {
     // Mark SOLD in DB — Buy Now ends the auction immediately for everyone
     await supabase
       .from('auctions')
-      .update({ status: 'SOLD', updated_at: new Date().toISOString() })
+      .update({
+        status:      'SOLD',
+        current_bid: buyPrice,
+        bid_count:   liveAuction.bidCount + 1,
+        updated_at:  new Date().toISOString(),
+      })
       .eq('id', auction.id);
 
     // Dispatch AUCTION_SOLD so the UI reacts immediately without waiting
@@ -242,7 +276,7 @@ export default function BidPanel({ auction }: { auction: Auction }) {
       payload: {
         auctionId:  auction.id,
         finalPrice: buyPrice,
-        buyer:      profile?.handle ?? 'anonymous',
+        buyer:      bidder,
       },
     });
 
@@ -497,7 +531,7 @@ export default function BidPanel({ auction }: { auction: Auction }) {
                 { label: `+$${Math.round(liveAuction.currentBid * 0.10)}`, inc: 0.10 },
               ].map(({ label, inc }) => (
                 <button
-                  key={label}
+                  key={inc}
                   onClick={() => {
                     const next = Math.ceil(liveAuction.currentBid * (1 + inc));
                     setBidAmount(String(next));

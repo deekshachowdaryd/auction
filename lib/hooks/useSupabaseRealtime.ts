@@ -144,6 +144,79 @@ export function useSupabaseRealtime({
           }
         }
       )
+      .on<any>(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'auctions' },
+        ({ new: row }) => {
+          let parsedEndsAt = Date.now() + 86400000;
+          if (row.ends_at) {
+            parsedEndsAt = typeof row.ends_at === 'string' ? new Date(row.ends_at).getTime() : Number(row.ends_at);
+            if (parsedEndsAt < 20000000000) parsedEndsAt *= 1000;
+            if (isNaN(parsedEndsAt)) parsedEndsAt = Date.now() + 86400000;
+          }
+
+          // Immediately add the newly created auction into global state
+          // mock the UI fields so it renders perfectly on the market page without throwing TypeErrors
+          const newAuction = {
+            id:            row.id,
+            title:         row.title,
+            subtitle:      row.subtitle ?? 'Premium Auction Listing',
+            category:      row.category,
+            status:        row.status,
+            currentBid:    row.current_bid,
+            reservePrice:  row.current_bid,
+            startingPrice: row.current_bid,
+            buyNowPrice:   null,
+            bidCount:      row.bid_count,
+            watcherCount:  0,
+            endsAt:        parsedEndsAt,
+            startedAt:     Date.now(),
+            imageUrl:      row.image_url ?? null,
+            seller: {
+              handle:     `seller_${row.seller_id?.substring(0,6) || 'anon'}`,
+              reputation: 100,
+              totalSales: 0,
+            },
+            specs:         row.specs ?? {},
+            recentBids:    [],
+            priceHistory:  [{ t: Date.now(), price: row.current_bid }],
+            tags:          row.tags ?? []
+          };
+
+          // Only dispatch if we don't already have it
+          if (!stateRef.current.auctions.has(row.id)) {
+            dispatch({ type: 'NEW_AUCTION', payload: newAuction as any });
+            info('NEW LISTING FOUND', `${row.title} just hit the market!`);
+          }
+        }
+      )
+      .on<any>(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'auctions' },
+        ({ new: row }) => {
+          // Sync any updates (like Admin force-close) directly into Context state
+          dispatch({ 
+            type: 'UPDATE_AUCTION', 
+            payload: {
+              id: row.id,
+              status: row.status,
+              currentBid: row.current_bid,
+              title: row.title,
+            } as any 
+          });
+        }
+      )
+      .on<any>(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'auctions' },
+        ({ old }) => {
+          // If an Admin deletes an auction entirely, instantly yank it from all connected clients
+          dispatch({ 
+            type: 'DELETE_AUCTION', 
+            payload: { id: old.id } 
+          });
+        }
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

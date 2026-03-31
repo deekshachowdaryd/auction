@@ -6,10 +6,12 @@ import {
   useReducer,
   useCallback,
   useMemo,
+  useEffect,
   ReactNode,
 } from 'react';
-import { AUCTIONS } from '@/lib/data';
-import type { Auction } from '@/lib/types';
+// Auction state is now fully database-driven from Supabase
+import type { Auction, AuctionStatus } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 // ── State shape ───────────────────────────────────
 export interface AuctionState {
@@ -34,6 +36,22 @@ export type AuctionAction =
         finalPrice: number;
         buyer: string;
       };
+    }
+  | {
+      type: 'HYDRATE_AUCTIONS';
+      payload: Map<string, Auction>;
+    }
+  | {
+      type: 'NEW_AUCTION';
+      payload: Auction;
+    }
+  | {
+      type: 'UPDATE_AUCTION';
+      payload: Partial<Auction> & { id: string };
+    }
+  | {
+      type: 'DELETE_AUCTION';
+      payload: { id: string };
     }
   | {
       type: 'RESET';
@@ -108,18 +126,56 @@ function auctionReducer(
       return { auctions: updatedAuctions, lastUpdated: Date.now() };
     }
 
-    case 'RESET':
+    case 'HYDRATE_AUCTIONS': {
+      return { auctions: action.payload, lastUpdated: Date.now() };
+    }
+
+    case 'NEW_AUCTION': {
+      const updatedAuctions = new Map(state.auctions);
+      updatedAuctions.set(action.payload.id, action.payload);
+      return { auctions: updatedAuctions, lastUpdated: Date.now() };
+    }
+
+    case 'UPDATE_AUCTION': {
+      const auction = state.auctions.get(action.payload.id);
+      if (!auction) return state;
+
+      const nextMap = new Map(state.auctions);
+      nextMap.set(action.payload.id, { ...auction, ...action.payload });
+
+      return {
+        ...state,
+        auctions: nextMap,
+        lastUpdated: Date.now(),
+      };
+    }
+
+    case 'DELETE_AUCTION': {
+      const nextMap = new Map(state.auctions);
+      nextMap.delete(action.payload.id);
+      
+      return {
+        ...state,
+        auctions: nextMap,
+        lastUpdated: Date.now(),
+      };
+    }
+
+    case 'RESET': {
       return buildInitialState();
+    }
 
     default:
       return state;
   }
 }
 
-// ── Initial state ─────────────────────────────────
+// ── Boot sequence ───────────────────────────────────
 function buildInitialState(): AuctionState {
+  // Initialize with completely empty maps; we strictly pull from the Database
+  const auctionsMap = new Map<string, Auction>();
   return {
-    auctions:    new Map(AUCTIONS.map(a => [a.id, a])),
+    auctions: auctionsMap,
     lastUpdated: Date.now(),
   };
 }
@@ -139,9 +195,102 @@ const AuctionContext = createContext<AuctionContextValue | null>(null);
 export function AuctionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(auctionReducer, undefined, buildInitialState);
 
+  // Fetch from Supabase on mount
+  useEffect(() => {
+    async function hydrateAuctions() {
+      // Fetch auctions and recent bids in parallel
+      const [auctionsRes, bidsRes] = await Promise.all([
+        supabase.from('auctions').select('*'),
+        supabase
+          .from('bids')
+          .select('id, auction_id, amount, bidder, placed_at')
+          .order('placed_at', { ascending: false })
+          .limit(500), // grab enough recent bids to cover all auctions
+      ]);
+
+      if (auctionsRes.error || !auctionsRes.data) return;
+
+      // Group bids by auction_id for O(1) lookup
+      const bidsByAuction = new Map<string, typeof bidsRes.data>();
+      if (bidsRes.data) {
+        for (const bid of bidsRes.data) {
+          if (!bidsByAuction.has(bid.auction_id)) {
+            bidsByAuction.set(bid.auction_id, []);
+          }
+          bidsByAuction.get(bid.auction_id)!.push(bid);
+        }
+      }
+
+      const newMap = new Map<string, Auction>();
+
+      for (const row of auctionsRes.data) {
+        let safeStatus = row.status as AuctionStatus;
+        if (safeStatus === ('OUTBID' as any)) safeStatus = 'ENDING';
+
+        let parsedEndsAt = Number(row.ends_at);
+        if (isNaN(parsedEndsAt)) parsedEndsAt = Date.now() + 86400000;
+        
+        const parsedStartedAt = row.started_at ? Number(row.started_at) : parsedEndsAt - 86400000 * 7;
+        
+        // Self-Healing: if it's UPCOMING but starts in the past, push it LIVE!
+        if (safeStatus === 'UPCOMING' && Date.now() >= parsedStartedAt) safeStatus = 'LIVE';
+
+        // Build recentBids and priceHistory from the persisted bids table
+        const auctionBids = (bidsByAuction.get(row.id) ?? []).slice(0, 5);
+        const recentBids = auctionBids.map(b => ({
+          id:        b.id,
+          bidder:    b.bidder,
+          amount:    b.amount,
+          timestamp: new Date(b.placed_at).getTime(),
+        }));
+
+        // Build price history: start from starting price, add each bid in chronological order
+        const priceHistory: { t: number; price: number }[] = [
+          { t: parsedStartedAt, price: row.current_bid },
+          ...auctionBids
+            .slice()
+            .reverse() // oldest first for chart
+            .map(b => ({ t: new Date(b.placed_at).getTime(), price: b.amount })),
+        ];
+
+        // Initialize UI fields purely from PostgreSQL 
+        const mappedAuction: Auction = {
+          id:            row.id,
+          title:         row.title,
+          subtitle:      row.subtitle ?? 'Premium Auction Listing',
+          category:      row.category,
+          status:        safeStatus,
+          currentBid:    row.current_bid,
+          reservePrice:  row.current_bid,
+          startingPrice: row.current_bid,
+          buyNowPrice:   null,
+          bidCount:      row.bid_count,
+          watcherCount:  0,
+          endsAt:        parsedEndsAt,
+          startedAt:     parsedStartedAt,
+          imageUrl:      row.image_url ?? null,
+          seller: {
+            handle:     `seller_${row.seller_id?.substring(0,6) || 'anon'}`,
+            reputation: 100,
+            totalSales: 0,
+          },
+          specs:        row.specs ?? {},
+          recentBids,
+          priceHistory,
+          tags:         row.tags ?? [],
+        };
+
+        newMap.set(row.id, mappedAuction);
+      }
+      dispatch({ type: 'HYDRATE_AUCTIONS', payload: newMap });
+    }
+    
+    hydrateAuctions();
+  }, [dispatch]);
+
   const getLiveAuctions = useCallback(() => {
     return Array.from(state.auctions.values()).filter(
-      a => a.status === 'LIVE' || a.status === 'ENDING'
+      a => a.status === 'LIVE' || a.status === 'ENDING' || a.status === 'UPCOMING'
     );
   }, [state.auctions]);
 

@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useWatchlist } from '@/lib/hooks/useWatchlist';
-import { useMyBids }    from '@/app/live/context/MyBidsContext';
-import { AUCTIONS }     from '@/lib/data';
-import type { MyBid }   from '@/lib/hooks/useMyBids';
+import { useMyBids } from '@/app/live/context/MyBidsContext';
+import { useAuctions } from '@/app/live/context/AuctionContext';
+import type { MyBid } from '@/lib/hooks/useMyBids';
 
 function formatPrice(n: number): string {
   return n.toLocaleString('en-US', {
@@ -16,9 +16,9 @@ function formatPrice(n: number): string {
 
 function formatTimeAgo(ms: number): string {
   const diff = Date.now() - ms;
-  const m    = Math.floor(diff / 60_000);
-  const h    = Math.floor(diff / 3_600_000);
-  if (m < 1)  return 'just now';
+  const m = Math.floor(diff / 60_000);
+  const h = Math.floor(diff / 3_600_000);
+  if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
@@ -36,22 +36,22 @@ function formatTimeLeft(ms: number): string {
 // ── Status badge ─────────────────────────────────
 function StatusBadge({ status }: { status: MyBid['status'] }) {
   const map = {
-    WINNING: { color: 'var(--accent-green)',  bg: 'var(--accent-green-muted)', label: '▲ WINNING' },
-    OUTBID:  { color: 'var(--accent-red)',    bg: 'var(--accent-red-muted)',   label: '▼ OUTBID'  },
-    WON:     { color: 'var(--accent-green)',  bg: 'var(--accent-green-muted)', label: '✓ WON'     },
-    LOST:    { color: 'var(--text-tertiary)', bg: 'var(--bg-elevated)',        label: '✕ LOST'    },
+    WINNING: { color: 'var(--accent-green)', bg: 'var(--accent-green-muted)', label: '▲ WINNING' },
+    OUTBID: { color: 'var(--accent-red)', bg: 'var(--accent-red-muted)', label: '▼ OUTBID' },
+    WON: { color: 'var(--accent-green)', bg: 'var(--accent-green-muted)', label: '✓ WON' },
+    LOST: { color: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', label: '✕ LOST' },
   };
   const s = map[status];
   return (
     <span style={{
-      fontSize:        '10px',
-      fontFamily:      'var(--font-mono)',
-      letterSpacing:   '0.06em',
-      padding:         '3px 8px',
-      borderRadius:    '4px',
-      color:           s.color,
+      fontSize: '10px',
+      fontFamily: 'var(--font-mono)',
+      letterSpacing: '0.06em',
+      padding: '3px 8px',
+      borderRadius: '4px',
+      color: s.color,
       backgroundColor: s.bg,
-      whiteSpace:      'nowrap',
+      whiteSpace: 'nowrap',
     }}>
       {s.label}
     </span>
@@ -70,38 +70,38 @@ function StatCard({
   return (
     <div style={{
       backgroundColor: 'var(--bg-surface)',
-      border:          highlight
+      border: highlight
         ? '1px solid color-mix(in srgb, var(--accent-green) 25%, transparent)'
         : 'var(--border-subtle)',
-      borderRadius:    '8px',
-      padding:         '16px 20px',
-      flex:            1,
-      minWidth:        '140px',
+      borderRadius: '8px',
+      padding: '16px 20px',
+      flex: 1,
+      minWidth: '140px',
     }}>
       <p style={{
-        fontSize:     '10px',
-        letterSpacing:'0.07em',
-        color:        'var(--text-tertiary)',
+        fontSize: '10px',
+        letterSpacing: '0.07em',
+        color: 'var(--text-tertiary)',
         marginBottom: '8px',
       }}>
         {label}
       </p>
       <p className="mono" style={{
-        fontSize:   '20px',
+        fontSize: '20px',
         fontWeight: 700,
-        color:      highlight ? 'var(--accent-green)' : 'var(--text-primary)',
+        color: highlight ? 'var(--accent-green)' : 'var(--text-primary)',
         lineHeight: 1,
-        whiteSpace:   'nowrap',
-        overflow:     'hidden',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
         textOverflow: 'ellipsis',
       }}>
         {value}
       </p>
       {sub && (
         <p style={{
-          fontSize:   '11px',
-          color:      'var(--text-tertiary)',
-          marginTop:  '4px',
+          fontSize: '11px',
+          color: 'var(--text-tertiary)',
+          marginTop: '4px',
         }}>
           {sub}
         </p>
@@ -113,29 +113,29 @@ function StatCard({
 // ── Bid row ──────────────────────────────────────
 function BidRow({ bid }: { bid: MyBid }) {
   const isPriceDifferent = bid.currentPrice !== bid.myAmount;
-  const isOutbid         = bid.status === 'OUTBID';
+  const isOutbid = bid.status === 'OUTBID';
 
   return (
     <Link href={`/auction/${bid.auctionId}`} style={{ textDecoration: 'none' }}>
       <div style={{
-        display:         'grid',
+        display: 'grid',
         gridTemplateColumns: '1fr auto auto auto',
-        gap:             '16px',
-        alignItems:      'center',
-        padding:         '14px 20px',
-        borderBottom:    'var(--border-subtle)',
-        cursor:          'pointer',
-        transition:      'var(--transition-fast)',
+        gap: '16px',
+        alignItems: 'center',
+        padding: '14px 20px',
+        borderBottom: 'var(--border-subtle)',
+        cursor: 'pointer',
+        transition: 'var(--transition-fast)',
       }}
-      className="table-row-hover"
+        className="table-row-hover"
       >
         {/* Title + meta */}
         <div>
           <p style={{
-            fontSize:   '13px',
-            color:      'var(--text-primary)',
+            fontSize: '13px',
+            color: 'var(--text-primary)',
             fontWeight: 500,
-            marginBottom:'2px',
+            marginBottom: '2px',
           }}>
             {bid.auctionTitle}
           </p>
@@ -148,14 +148,14 @@ function BidRow({ bid }: { bid: MyBid }) {
         <div style={{ textAlign: 'right' }}>
           <p className="mono" style={{
             fontSize: '13px',
-            color:    isOutbid ? 'var(--accent-red)' : 'var(--text-primary)',
+            color: isOutbid ? 'var(--accent-red)' : 'var(--text-primary)',
           }}>
             ${formatPrice(bid.myAmount)}
           </p>
           {isPriceDifferent && (
             <p className="mono" style={{
               fontSize: '11px',
-              color:    'var(--text-tertiary)',
+              color: 'var(--text-tertiary)',
             }}>
               now ${formatPrice(bid.currentPrice)}
             </p>
@@ -164,8 +164,8 @@ function BidRow({ bid }: { bid: MyBid }) {
 
         {/* Time left */}
         <div className="mono" style={{
-          fontSize:  '11px',
-          color:     formatTimeLeft(bid.endsAt) === 'ENDED'
+          fontSize: '11px',
+          color: formatTimeLeft(bid.endsAt) === 'ENDED'
             ? 'var(--text-tertiary)'
             : 'var(--text-secondary)',
           whiteSpace: 'nowrap',
@@ -188,30 +188,31 @@ function WatchRow({
   auctionId: string;
   onRemove: (id: string) => void;
 }) {
-  // O(1) lookup from the Map in data.ts
-  const auction = AUCTIONS.find(a => a.id === auctionId);
+  const { state } = useAuctions();
+  // O(1) lookup from the Map in AuctionContext
+  const auction = state.auctions.get(auctionId);
   if (!auction) return null;
 
   const isEnding = auction.status === 'ENDING';
-  const isLive   = auction.status === 'LIVE';
+  const isLive = auction.status === 'LIVE';
 
   return (
     <div style={{
-      display:             'grid',
+      display: 'grid',
       gridTemplateColumns: '1fr auto auto auto',
-      gap:                 '16px',
-      alignItems:          'center',
-      padding:             '14px 20px',
-      borderBottom:        'var(--border-subtle)',
+      gap: '16px',
+      alignItems: 'center',
+      padding: '14px 20px',
+      borderBottom: 'var(--border-subtle)',
     }}>
       {/* Title + meta */}
       <Link href={`/auction/${auction.id}`} style={{ textDecoration: 'none' }}>
         <div className="table-row-hover" style={{ cursor: 'pointer' }}>
           <p style={{
-            fontSize:    '13px',
-            color:       'var(--text-primary)',
-            fontWeight:  500,
-            marginBottom:'2px',
+            fontSize: '13px',
+            color: 'var(--text-primary)',
+            fontWeight: 500,
+            marginBottom: '2px',
           }}>
             {auction.title}
           </p>
@@ -224,21 +225,21 @@ function WatchRow({
       {/* Current bid */}
       <div className="mono" style={{
         fontSize: '13px',
-        color:    'var(--accent-green)',
+        color: 'var(--accent-green)',
       }}>
         ${formatPrice(auction.currentBid)}
       </div>
 
       {/* Status pill */}
       <span style={{
-        fontSize:        '10px',
-        fontFamily:      'var(--font-mono)',
-        letterSpacing:   '0.06em',
-        padding:         '3px 8px',
-        borderRadius:    '4px',
-        color:           isEnding ? 'var(--accent-amber)' : isLive ? 'var(--accent-green)' : 'var(--text-tertiary)',
+        fontSize: '10px',
+        fontFamily: 'var(--font-mono)',
+        letterSpacing: '0.06em',
+        padding: '3px 8px',
+        borderRadius: '4px',
+        color: isEnding ? 'var(--accent-amber)' : isLive ? 'var(--accent-green)' : 'var(--text-tertiary)',
         backgroundColor: isEnding ? 'var(--accent-amber-glow)' : isLive ? 'var(--accent-green-muted)' : 'var(--bg-elevated)',
-        whiteSpace:      'nowrap',
+        whiteSpace: 'nowrap',
       }}>
         {isEnding ? '⚡ ENDING' : isLive ? '● LIVE' : auction.status}
       </span>
@@ -247,15 +248,15 @@ function WatchRow({
       <button
         onClick={() => onRemove(auctionId)}
         style={{
-          background:   'none',
-          border:       'none',
-          color:        'var(--text-tertiary)',
-          fontSize:     '16px',
-          cursor:       'pointer',
-          padding:      '4px 8px',
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-tertiary)',
+          fontSize: '16px',
+          cursor: 'pointer',
+          padding: '4px 8px',
           borderRadius: '4px',
-          lineHeight:   1,
-          transition:   'var(--transition-fast)',
+          lineHeight: 1,
+          transition: 'var(--transition-fast)',
         }}
         title="Remove from watchlist"
       >
@@ -287,25 +288,25 @@ export default function DashboardPage() {
   const hydrated = wHydrated && bHydrated;
 
   const TABS = [
-    { id: 'bids',      label: 'MY BIDS',   count: activeBids.length + historicalBids.length },
+    { id: 'bids', label: 'MY BIDS', count: activeBids.length + historicalBids.length },
     { id: 'watchlist', label: 'WATCHLIST', count: watchlist.length },
   ] as const;
 
   return (
     <div style={{
-      minHeight:   '100vh',
-      padding:     '32px 40px',
-      maxWidth:    '1100px',
-      margin:      '0 auto',
+      minHeight: '100vh',
+      padding: '32px 40px',
+      maxWidth: '1100px',
+      margin: '0 auto',
     }}>
 
       {/* ── Page header ── */}
       <div style={{ marginBottom: '28px' }}>
         <h1 style={{
-          fontSize:     '22px',
-          fontWeight:   700,
-          color:        'var(--text-primary)',
-          letterSpacing:'-0.01em',
+          fontSize: '22px',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          letterSpacing: '-0.01em',
           marginBottom: '4px',
         }}>
           DASHBOARD
@@ -318,13 +319,13 @@ export default function DashboardPage() {
       {/* ── Stats strip ── */}
       {!hydrated ? (
         <div style={{
-          height:          '88px',
+          height: '88px',
           backgroundColor: 'var(--bg-surface)',
-          borderRadius:    '8px',
-          marginBottom:    '20px',
-          display:         'flex',
-          alignItems:      'center',
-          justifyContent:  'center',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}>
           <span className="mono" style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
             LOADING...
@@ -332,10 +333,10 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div style={{
-          display:       'flex',
-          gap:           '12px',
-          marginBottom:  '24px',
-          flexWrap:      'wrap',
+          display: 'flex',
+          gap: '12px',
+          marginBottom: '24px',
+          flexWrap: 'wrap',
         }}>
           <StatCard
             label="ACTIVE BIDS"
@@ -363,8 +364,8 @@ export default function DashboardPage() {
 
       {/* ── Tab bar ── */}
       <div style={{
-        display:      'flex',
-        gap:          '2px',
+        display: 'flex',
+        gap: '2px',
         marginBottom: '2px',
         borderBottom: 'var(--border-subtle)',
       }}>
@@ -375,29 +376,29 @@ export default function DashboardPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                padding:         '10px 20px',
+                padding: '10px 20px',
                 backgroundColor: 'transparent',
-                border:          'none',
-                borderBottom:    isActive
+                border: 'none',
+                borderBottom: isActive
                   ? '2px solid var(--accent-green)'
                   : '2px solid transparent',
-                color:           isActive ? 'var(--accent-green)' : 'var(--text-tertiary)',
-                fontSize:        '11px',
-                fontFamily:      'var(--font-mono)',
-                letterSpacing:   '0.07em',
-                cursor:          'pointer',
-                transition:      'var(--transition-fast)',
-                marginBottom:    '-1px',
+                color: isActive ? 'var(--accent-green)' : 'var(--text-tertiary)',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.07em',
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)',
+                marginBottom: '-1px',
               }}
             >
               {tab.label}
               <span style={{
-                marginLeft:      '8px',
-                fontSize:        '10px',
+                marginLeft: '8px',
+                fontSize: '10px',
                 backgroundColor: isActive ? 'var(--accent-green-muted)' : 'var(--bg-elevated)',
-                color:           isActive ? 'var(--accent-green)' : 'var(--text-tertiary)',
-                padding:         '1px 6px',
-                borderRadius:    '10px',
+                color: isActive ? 'var(--accent-green)' : 'var(--text-tertiary)',
+                padding: '1px 6px',
+                borderRadius: '10px',
               }}>
                 {tab.count}
               </span>
@@ -409,19 +410,19 @@ export default function DashboardPage() {
       {/* ── Content panel ── */}
       <div style={{
         backgroundColor: 'var(--bg-surface)',
-        border:          'var(--border-subtle)',
-        borderRadius:    '0 8px 8px 8px',
-        overflow:        'hidden',
+        border: 'var(--border-subtle)',
+        borderRadius: '0 8px 8px 8px',
+        overflow: 'hidden',
       }}>
 
         {/* Column headers */}
         <div style={{
-          display:             'grid',
+          display: 'grid',
           gridTemplateColumns: '1fr auto auto auto',
-          gap:                 '16px',
-          padding:             '10px 20px',
-          borderBottom:        'var(--border-subtle)',
-          backgroundColor:     'var(--bg-elevated)',
+          gap: '16px',
+          padding: '10px 20px',
+          borderBottom: 'var(--border-subtle)',
+          backgroundColor: 'var(--bg-elevated)',
         }}>
           {activeTab === 'bids' ? (
             <>
@@ -455,8 +456,8 @@ export default function DashboardPage() {
                   No bids yet
                 </p>
                 <Link href="/" style={{
-                  fontSize:   '12px',
-                  color:      'var(--accent-green)',
+                  fontSize: '12px',
+                  color: 'var(--accent-green)',
                   fontFamily: 'var(--font-mono)',
                 }}>
                   Browse auctions →
@@ -468,12 +469,12 @@ export default function DashboardPage() {
                 {activeBids.length > 0 && (
                   <>
                     <div style={{
-                      padding:         '8px 20px',
+                      padding: '8px 20px',
                       backgroundColor: 'var(--bg-elevated)',
-                      fontSize:        '10px',
-                      color:           'var(--text-tertiary)',
-                      letterSpacing:   '0.06em',
-                      borderBottom:    'var(--border-subtle)',
+                      fontSize: '10px',
+                      color: 'var(--text-tertiary)',
+                      letterSpacing: '0.06em',
+                      borderBottom: 'var(--border-subtle)',
                     }}>
                       ACTIVE
                     </div>
@@ -485,12 +486,12 @@ export default function DashboardPage() {
                 {historicalBids.length > 0 && (
                   <>
                     <div style={{
-                      padding:         '8px 20px',
+                      padding: '8px 20px',
                       backgroundColor: 'var(--bg-elevated)',
-                      fontSize:        '10px',
-                      color:           'var(--text-tertiary)',
-                      letterSpacing:   '0.06em',
-                      borderBottom:    'var(--border-subtle)',
+                      fontSize: '10px',
+                      color: 'var(--text-tertiary)',
+                      letterSpacing: '0.06em',
+                      borderBottom: 'var(--border-subtle)',
                     }}>
                       HISTORY
                     </div>
@@ -508,8 +509,8 @@ export default function DashboardPage() {
                 No auctions saved yet
               </p>
               <Link href="/" style={{
-                fontSize:   '12px',
-                color:      'var(--accent-green)',
+                fontSize: '12px',
+                color: 'var(--accent-green)',
                 fontFamily: 'var(--font-mono)',
               }}>
                 Browse auctions →

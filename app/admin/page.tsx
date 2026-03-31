@@ -112,11 +112,13 @@ export default function AdminPage() {
   const { user, profile, loading } = useAuth();
   const router                     = useRouter();
 
-  const [tab,      setTab]      = useState<Tab>('stats');
-  const [users,    setUsers]    = useState<AdminUser[]>([]);
-  const [auctions, setAuctions] = useState<AdminAuction[]>([]);
-  const [stats,    setStats]    = useState<Stats | null>(null);
-  const [fetching, setFetching] = useState(true);
+  const [tab,             setTab]             = useState<Tab>('stats');
+  const [users,           setUsers]           = useState<AdminUser[]>([]);
+  const [auctions,        setAuctions]        = useState<AdminAuction[]>([]);
+  const [stats,           setStats]           = useState<Stats | null>(null);
+  const [fetching,        setFetching]        = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting,        setDeleting]        = useState(false);
 
   // ── Fetch all data ────────────────────────────
   async function fetchAll() {
@@ -129,14 +131,21 @@ export default function AdminPage() {
     ]);
 
     const usersData    = usersRes.data    ?? [];
-    const auctionsData = auctionsRes.data ?? [];
+    const rawAuctionsData = auctionsRes.data ?? [];
+    
+    // Scrub historical database states that were permanently stored as 'OUTBID'
+    const auctionsData = rawAuctionsData.map((a: any) => ({
+      ...a,
+      status: a.status === 'OUTBID' ? 'ENDING' : a.status
+    }));
+
     const bidCount     = bidsRes.count    ?? 0;
 
     setUsers(usersData);
     setAuctions(auctionsData);
 
     const revenue     = auctionsData
-      .filter(a => a.status === 'SOLD')
+      .filter((a: AdminAuction) => a.status === 'SOLD')
       .reduce((sum: number, a: AdminAuction) => sum + a.current_bid, 0);
     const liveCount   = auctionsData.filter((a: AdminAuction) => a.status === 'LIVE' || a.status === 'ENDING').length;
     const bannedCount = usersData.filter((u: AdminUser) => u.banned).length;
@@ -154,6 +163,10 @@ export default function AdminPage() {
 
   useEffect(() => { fetchAll(); }, [user]);
 
+  useEffect(() => {
+    if (!loading && !user) router.push('/login');
+  }, [user, loading, router]);
+
   // ── Guards ────────────────────────────────────
   if (loading) {
     return (
@@ -165,11 +178,7 @@ export default function AdminPage() {
     );
   }
   
-  useEffect(() => {
-    if (!loading && !user) router.push('/login');
-  }, [loading, user]);
-
-  if (!loading && !user) return null;
+  if (!user) return null;
   if (profile?.role && profile.role !== 'manager') return <AccessDenied role={profile.role} />;
 
   // ── User actions ──────────────────────────────
@@ -188,6 +197,21 @@ export default function AdminPage() {
     await supabase.from('auctions')
       .update({ status: 'SOLD', updated_at: new Date().toISOString() })
       .eq('id', id);
+    await fetchAll();
+  }
+
+  async function deleteAuction(id: string) {
+    // Show inline confirmation instead of browser prompt
+    setConfirmDeleteId(id);
+  }
+
+  async function executeDelete(id: string) {
+    setDeleting(true);
+    // Must delete child bids first — the bids table has a FK referencing auctions.id
+    await supabase.from('bids').delete().eq('auction_id', id);
+    await supabase.from('auctions').delete().eq('id', id);
+    setConfirmDeleteId(null);
+    setDeleting(false);
     await fetchAll();
   }
 
@@ -500,7 +524,7 @@ export default function AdminPage() {
           {/* Column headers */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 100px 70px 100px 90px',
+            gridTemplateColumns: '1fr 100px 70px 100px 140px',
             gap: '0 12px', padding: '0 16px',
             fontSize: '10px', letterSpacing: '0.06em', color: 'var(--text-tertiary)',
           }}>
@@ -508,7 +532,7 @@ export default function AdminPage() {
             <span style={{ textAlign: 'right' }}>CURRENT BID</span>
             <span style={{ textAlign: 'center' }}>BIDS</span>
             <span style={{ textAlign: 'center' }}>STATUS</span>
-            <span style={{ textAlign: 'center' }}>ACTION</span>
+            <span style={{ textAlign: 'center' }}>ACTIONS</span>
           </div>
 
           {fetching ? (
@@ -518,78 +542,141 @@ export default function AdminPage() {
           ) : auctions.map(a => {
             const statusColor = STATUS_COLORS[a.status] ?? 'var(--text-tertiary)';
             const canClose    = a.status === 'LIVE' || a.status === 'ENDING' || a.status === 'UPCOMING';
+            const isConfirming = confirmDeleteId === a.id;
 
             return (
-              <div
-                key={a.id}
-                style={{
-                  display:             'grid',
-                  gridTemplateColumns: '1fr 100px 70px 100px 90px',
-                  gap:                 '0 12px',
-                  alignItems:          'center',
-                  padding:             '12px 16px',
-                  backgroundColor:     'var(--bg-surface)',
-                  border:              'var(--border-subtle)',
-                  borderRadius:        '6px',
-                }}
-              >
-                {/* Title */}
-                <div style={{ minWidth: 0 }}>
-                  <p style={{
-                    fontSize: '13px', fontWeight: 500,
-                    color: 'var(--text-primary)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {a.title}
-                  </p>
-                  <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                    {a.category} · {a.id}
-                  </p>
-                </div>
+              <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                {/* ── Row ── */}
+                <div
+                  style={{
+                    display:             'grid',
+                    gridTemplateColumns: '1fr 100px 70px 100px 140px',
+                    gap:                 '0 12px',
+                    alignItems:          'center',
+                    padding:             '12px 16px',
+                    backgroundColor:     isConfirming
+                      ? 'color-mix(in srgb, var(--accent-red) 5%, var(--bg-surface))'
+                      : 'var(--bg-surface)',
+                    border:              isConfirming
+                      ? '1px solid color-mix(in srgb, var(--accent-red) 30%, transparent)'
+                      : 'var(--border-subtle)',
+                    borderRadius:        isConfirming ? '6px 6px 0 0' : '6px',
+                    transition:          'background-color 150ms ease, border-color 150ms ease',
+                  }}
+                >
+                  {/* Title */}
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{
+                      fontSize: '13px', fontWeight: 500,
+                      color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {a.title}
+                    </p>
+                    <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                      {a.category} · {a.id}
+                    </p>
+                  </div>
 
-                {/* Bid */}
-                <span className="mono" style={{ color: 'var(--accent-green)', fontSize: '13px', fontWeight: 600, textAlign: 'right' }}>
-                  ${formatPrice(a.current_bid)}
-                </span>
-
-                {/* Count */}
-                <span className="mono" style={{ color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
-                  {a.bid_count}
-                </span>
-
-                {/* Status */}
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <span className="mono" style={{
-                    color: statusColor,
-                    backgroundColor: `color-mix(in srgb, ${statusColor} 10%, transparent)`,
-                    border: `1px solid color-mix(in srgb, ${statusColor} 30%, transparent)`,
-                    padding: '3px 8px', borderRadius: '3px',
-                    fontSize: '9px', letterSpacing: '0.08em', fontWeight: 600,
-                  }}>
-                    {a.status}
+                  {/* Bid */}
+                  <span className="mono" style={{ color: 'var(--accent-green)', fontSize: '13px', fontWeight: 600, textAlign: 'right' }}>
+                    ${formatPrice(a.current_bid)}
                   </span>
-                </div>
 
-                {/* Force close */}
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  {canClose ? (
+                  {/* Count */}
+                  <span className="mono" style={{ color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
+                    {a.bid_count}
+                  </span>
+
+                  {/* Status */}
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <span className="mono" style={{
+                      color: statusColor,
+                      backgroundColor: `color-mix(in srgb, ${statusColor} 10%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${statusColor} 30%, transparent)`,
+                      padding: '3px 8px', borderRadius: '3px',
+                      fontSize: '9px', letterSpacing: '0.08em', fontWeight: 600,
+                    }}>
+                      {a.status}
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                    {canClose ? (
+                      <button
+                        onClick={() => forceClose(a.id)}
+                        style={{
+                          padding: '4px 8px', borderRadius: '3px',
+                          backgroundColor: 'var(--bg-elevated)',
+                          border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'var(--font-mono)', fontSize: '9px',
+                          letterSpacing: '0.05em', cursor: 'pointer',
+                        }}
+                      >
+                        FORCE CLOSE
+                      </button>
+                    ) : null}
                     <button
-                      onClick={() => forceClose(a.id)}
+                      onClick={() => isConfirming ? setConfirmDeleteId(null) : deleteAuction(a.id)}
                       style={{
-                        padding: '4px 10px', borderRadius: '3px',
-                        backgroundColor: 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
+                        padding: '4px 8px', borderRadius: '3px',
+                        backgroundColor: isConfirming
+                          ? 'color-mix(in srgb, var(--accent-red) 20%, transparent)'
+                          : 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
                         border: '1px solid color-mix(in srgb, var(--accent-red) 25%, transparent)',
                         color: 'var(--accent-red)',
                         fontFamily: 'var(--font-mono)', fontSize: '9px',
                         letterSpacing: '0.05em', cursor: 'pointer',
                       }}
                     >
-                      FORCE CLOSE
+                      {isConfirming ? 'CANCEL' : 'DELETE'}
                     </button>
-                  ) : (
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>—</span>
-                  )}
+                  </div>
                 </div>
+
+                {/* ── Inline confirmation panel ── */}
+                {isConfirming && (
+                  <div style={{
+                    padding: '12px 16px',
+                    backgroundColor: 'color-mix(in srgb, var(--accent-red) 8%, var(--bg-elevated))',
+                    border: '1px solid color-mix(in srgb, var(--accent-red) 30%, transparent)',
+                    borderTop: 'none',
+                    borderRadius: '0 0 6px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}>
+                    <div>
+                      <p className="mono" style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 700, letterSpacing: '0.06em' }}>
+                        ⚠ PERMANENT DELETION
+                      </p>
+                      <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+                        Deletes <strong style={{ color: 'var(--text-secondary)' }}>{a.title}</strong> and all {a.bid_count} associated bids. Cannot be undone.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => executeDelete(a.id)}
+                      disabled={deleting}
+                      style={{
+                        flexShrink: 0,
+                        padding: '7px 16px', borderRadius: '4px',
+                        backgroundColor: deleting ? 'var(--bg-elevated)' : 'var(--accent-red)',
+                        border: 'none',
+                        color: deleting ? 'var(--accent-red)' : '#fff',
+                        fontFamily: 'var(--font-mono)', fontSize: '10px',
+                        fontWeight: 700, letterSpacing: '0.05em',
+                        cursor: deleting ? 'not-allowed' : 'pointer',
+                        transition: 'var(--transition-fast)',
+                        boxShadow: deleting ? 'none' : '0 0 12px color-mix(in srgb, var(--accent-red) 40%, transparent)',
+                      }}
+                    >
+                      {deleting ? 'DELETING...' : 'CONFIRM DELETE →'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -597,4 +684,4 @@ export default function AdminPage() {
       )}
     </div>
   );
-}
+}

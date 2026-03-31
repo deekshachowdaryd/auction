@@ -4,6 +4,7 @@ import {
   createContext, useContext, useState,
   useCallback, useEffect,
 } from 'react';
+import { useAuth } from './AuthContext';
 
 export type NotificationType = 'OUTBID' | 'WATCHED_BID' | 'MARKET' | 'SYSTEM';
 
@@ -26,26 +27,35 @@ interface NotificationContextValue {
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
-const STORAGE_KEY = 'auction_terminal_notifications';
-const MAX_STORED  = 50; // cap so localStorage never bloats
+const BASE_STORAGE_KEY = 'auction_terminal_notifications_';
+const MAX_STORED       = 50; // cap so localStorage never bloats
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage on mount or when user changes
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setNotifications(JSON.parse(stored));
-    } catch { /* silent */ }
-  }, []);
+      const storageKey = BASE_STORAGE_KEY + (user ? user.id : 'guest');
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        setNotifications(JSON.parse(stored));
+      } else {
+        setNotifications([]);
+      }
+    } catch { 
+      setNotifications([]); 
+    }
+  }, [user?.id]);
 
   // Persist on every change
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.slice(0, MAX_STORED)));
+      const storageKey = BASE_STORAGE_KEY + (user ? user.id : 'guest');
+      localStorage.setItem(storageKey, JSON.stringify(notifications.slice(0, MAX_STORED)));
     } catch { /* silent */ }
-  }, [notifications]);
+  }, [notifications, user?.id]);
 
   const addNotification = useCallback((
     type:  NotificationType,
